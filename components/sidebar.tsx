@@ -3,65 +3,46 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
+import { useAuth } from "@/lib/AuthContext"
+
+const TIERS = [
+  { name:"Novice",       min:0,    color:"text-gray-400",   icon:"🔰" },
+  { name:"Apprentice",   min:500,  color:"text-green-400",  icon:"⚡" },
+  { name:"Cryptanalyst", min:1000, color:"text-blue-400",   icon:"🔍" },
+  { name:"Specialist",   min:1500, color:"text-violet-400", icon:"💎" },
+  { name:"Expert",       min:2000, color:"text-amber-400",  icon:"🏆" },
+  { name:"Master",       min:2500, color:"text-red-400",    icon:"👑" },
+]
+function getTier(r: number) { return [...TIERS].reverse().find(t => r >= t.min) ?? TIERS[0] }
 
 const navItems = [
   {
     group: "Algorithms",
     items: [
-      {
-        label: "Classical Ciphers",
-        href: "/classical",
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
-            <path d="M7.5 4.5v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-        ),
-      },
-      {
-        label: "Symmetric Key",
-        href: "/symmetric",
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <path d="M5.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm0 0h4m0 0v1.5m0-1.5V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-        ),
-      },
-      {
-        label: "Hashing",
-        href: "/hashing",
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <path d="M3 5h9M3 10h9M6 2.5v10M9 2.5v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-        ),
-      },
-      {
-        label: "Asymmetric",
-        href: "/asymmetric",
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <path d="M3 7.5h3m6 0h-3m0-3v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <circle cx="3" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-            <circle cx="12" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-          </svg>
-        ),
-        tag: "New",
-      },
+      { label: "Classical Ciphers", href: "/classical",  tag: null,
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M7.5 4.5v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Symmetric Key",     href: "/symmetric",  tag: null,
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M5.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm0 0h4m0 0v1.5m0-1.5V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Hashing",           href: "/hashing",    tag: null,
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 5h9M3 10h9M6 2.5v10M9 2.5v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Asymmetric",        href: "/asymmetric", tag: "New",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 7.5h3m6 0h-3m0-3v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="3" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/><circle cx="12" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/></svg> },
+    ],
+  },
+  {
+    group: "Practice",
+    items: [
+      { label: "Cipher Challenge",  href: "/challenge",  tag: "🏆",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm0 3.5v4m0 1.5v.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Daily Contest",     href: "/contest",    tag: "🔴",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1l1.8 3.6L13 5.3l-2.75 2.7.65 3.8L7.5 10l-3.4 1.8.65-3.8L2 5.3l3.7-.7z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/></svg> },
     ],
   },
   {
     group: "Analysis",
     items: [
-      {
-        label: "Dashboard",
-        href: "/dashboard",
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <path d="M2 11L5.5 7l3 2.5L12 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ),
-      },
+      { label: "Dashboard",         href: "/dashboard",  tag: null,
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 11L5.5 7l3 2.5L12 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
     ],
   },
 ]
@@ -88,9 +69,12 @@ function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: (
                       {label}
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {tag && (
-                        <span className="text-[9px] font-bold tracking-wider bg-blue-600/20 text-blue-400 border border-blue-600/30 px-1.5 py-0.5 rounded">
-                          {tag}
+                      {tag === "New" && <span className="text-[9px] font-bold tracking-wider bg-blue-600/20 text-blue-400 border border-blue-600/30 px-1.5 py-0.5 rounded">New</span>}
+                      {tag === "🏆" && <span className="text-[11px]">🏆</span>}
+                      {tag === "🔴" && (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
                         </span>
                       )}
                       {active && <span className="w-1 h-1 rounded-full bg-blue-400" />}
@@ -123,9 +107,10 @@ function LogoBlock() {
   )
 }
 
-function StatusDot() {
-  return (
-    <div className="border-t border-gray-800/60 px-4 py-3">
+function UserFooter({ onNavClick }: { onNavClick?: () => void }) {
+  const { profile } = useAuth()
+  if (!profile) return (
+    <div className="border-t border-gray-800/60 px-3 py-3">
       <div className="flex items-center gap-2">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
@@ -135,16 +120,31 @@ function StatusDot() {
       </div>
     </div>
   )
+  const tier = getTier(profile.rating)
+  return (
+    <div className="border-t border-gray-800/60 px-2 py-2">
+      <Link href="/profile" onClick={onNavClick}
+        className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-gray-800/40 transition-colors group">
+        <div className={`w-7 h-7 rounded-lg border flex items-center justify-center text-sm shrink-0 ${tier.color.replace("text-","border-").replace("-400","-700/40")} bg-gray-900/60`}>
+          {tier.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium text-white truncate">{profile.username}</p>
+          <p className={`text-[10px] ${tier.color}`}>{profile.rating} · {tier.name}</p>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-gray-700 group-hover:text-gray-500 shrink-0 transition-colors">
+          <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </Link>
+    </div>
+  )
 }
 
 export default function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Close on route change
   useEffect(() => { setMobileOpen(false) }, [pathname])
-
-  // Lock body scroll when open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : ""
     return () => { document.body.style.overflow = "" }
@@ -152,47 +152,30 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* ── Desktop sidebar ── */}
+      {/* Desktop */}
       <aside className="hidden md:flex w-56 border-r border-gray-800/60 bg-[#080808] flex-col shrink-0 h-full">
-        <div className="h-12 border-b border-gray-800/60 flex items-center px-4">
-          <LogoBlock />
-        </div>
+        <div className="h-12 border-b border-gray-800/60 flex items-center px-4"><LogoBlock /></div>
         <NavContent pathname={pathname} />
-        <StatusDot />
+        <UserFooter />
       </aside>
 
-      {/* ── Mobile top bar ── */}
+      {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 inset-x-0 z-50 h-12 bg-[#080808] border-b border-gray-800/60 flex items-center justify-between px-4">
         <LogoBlock />
         <button onClick={() => setMobileOpen(!mobileOpen)}
-          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800"
-          aria-label="Toggle menu">
-          {mobileOpen ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="4" width="12" height="1.5" rx="0.75" fill="currentColor"/>
-              <rect x="2" y="7.25" width="12" height="1.5" rx="0.75" fill="currentColor"/>
-              <rect x="2" y="10.5" width="12" height="1.5" rx="0.75" fill="currentColor"/>
-            </svg>
-          )}
+          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800">
+          {mobileOpen
+            ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="2" y="7.25" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="2" y="10.5" width="12" height="1.5" rx="0.75" fill="currentColor"/></svg>
+          }
         </button>
       </div>
 
-      {/* ── Mobile drawer backdrop ── */}
-      {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-          onClick={() => setMobileOpen(false)} />
-      )}
+      {mobileOpen && <div className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />}
 
-      {/* ── Mobile drawer ── */}
-      <aside className={`md:hidden fixed top-12 left-0 bottom-0 z-50 w-64 bg-[#080808] border-r border-gray-800/60 flex flex-col transform transition-transform duration-300 ease-out ${
-        mobileOpen ? "translate-x-0" : "-translate-x-full"
-      }`}>
+      <aside className={`md:hidden fixed top-12 left-0 bottom-0 z-50 w-64 bg-[#080808] border-r border-gray-800/60 flex flex-col transform transition-transform duration-300 ease-out ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <NavContent pathname={pathname} onNavClick={() => setMobileOpen(false)} />
-        <StatusDot />
+        <UserFooter onNavClick={() => setMobileOpen(false)} />
       </aside>
     </>
   )

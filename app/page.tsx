@@ -1,310 +1,836 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 
-function CipherText({ text, className }: { text: string; className?: string }) {
-  const [displayed, setDisplayed] = useState(text)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+// ─── Utility ───────────────────────────────────────────────────────────────────
+const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^⊕≡∑∏∫√∂∇"
+const rand   = (a: number, b: number) => Math.random() * (b - a) + a
+const pick   = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
+const clamp  = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
+// ─── Matrix Rain ───────────────────────────────────────────────────────────────
+function MatrixRain() {
+  const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
-    let iteration = 0
-    clearInterval(intervalRef.current!)
-    intervalRef.current = setInterval(() => {
-      setDisplayed(
-        text.split("").map((char, idx) => {
-          if (idx < iteration) return char
-          if (char === " ") return " "
-          return chars[Math.floor(Math.random() * chars.length)]
-        }).join("")
-      )
-      if (iteration >= text.length) clearInterval(intervalRef.current!)
-      iteration += 0.4
-    }, 30)
-    return () => clearInterval(intervalRef.current!)
-  }, [text])
-
-  return <span className={className}>{displayed}</span>
+    const c = ref.current; if (!c) return
+    const ctx = c.getContext("2d")!
+    let id: number
+    const resize = () => { c.width = c.offsetWidth; c.height = c.offsetHeight }
+    resize(); window.addEventListener("resize", resize)
+    const cols  = Math.floor(c.width / 20)
+    const drops = Array.from({ length: cols }, () => rand(0, c.height / 20))
+    const draw  = () => {
+      ctx.fillStyle = "rgba(5,5,5,0.045)"
+      ctx.fillRect(0, 0, c.width, c.height)
+      for (let i = 0; i < drops.length; i++) {
+        ctx.fillStyle = `rgba(59,130,246,${rand(0.04, 0.22)})`
+        ctx.font = "13px 'Courier New',monospace"
+        ctx.fillText(pick(GLYPHS.split("")), i * 20, drops[i] * 20)
+        if (drops[i] * 20 > c.height && Math.random() > 0.975) drops[i] = 0
+        drops[i] += 0.38
+      }
+      id = requestAnimationFrame(draw)
+    }
+    draw()
+    return () => { window.removeEventListener("resize", resize); cancelAnimationFrame(id) }
+  }, [])
+  return <canvas ref={ref} className="absolute inset-0 w-full h-full opacity-25" />
 }
 
-function HexGrid() {
+// ─── Scramble hook ─────────────────────────────────────────────────────────────
+// Must start with the real target string to avoid SSR/client hydration mismatch.
+// Scrambling only begins after mount (useEffect = client only).
+function useScramble(target: string, speed = 28, delay = 0) {
+  const [text, setText] = useState(target) // ← always start with real text
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    const t = setTimeout(() => {
+      let iter = 0
+      const iv = setInterval(() => {
+        setText(target.split("").map((ch, i) => {
+          if (ch === " ") return " "
+          if (i < iter) return ch
+          return pick(GLYPHS.split(""))
+        }).join(""))
+        iter += 0.45
+        if (iter >= target.length) clearInterval(iv)
+      }, speed)
+      return () => clearInterval(iv)
+    }, delay)
+    return () => clearTimeout(t)
+  }, [mounted, target, speed, delay])
+
+  return text
+}
+
+// ─── Cipher ticker ─────────────────────────────────────────────────────────────
+const TICKS = [
+  "AES-128  ▸  ROUND 7/10   ▸  MIXCOLUMNS",
+  "SHA-256  ▸  BLOCK 3/8    ▸  COMPRESSION",
+  "RSA-2048 ▸  p=61  q=53   ▸  SIGNING",
+  "CAESAR   ▸  SHIFT +3     ▸  H→K E→H",
+  "ECDH     ▸  ALICE ⟷ BOB  ▸  SHARED",
+  "DES      ▸  ROUND 12/16  ▸  S-BOX",
+]
+function CipherTicker() {
+  const [i, setI]             = useState(0)
+  const [on, setOn]           = useState(true)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (!mounted) return
+    const t = setInterval(() => {
+      setOn(false)
+      setTimeout(() => { setI(x => (x + 1) % TICKS.length); setOn(true) }, 300)
+    }, 2600)
+    return () => clearInterval(t)
+  }, [mounted])
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] md:w-[600px] h-[400px] md:h-[600px] rounded-full bg-blue-600/5 blur-[120px]" />
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] md:w-[300px] h-[200px] md:h-[300px] rounded-full bg-blue-500/8 blur-[80px]" />
-      <div className="hidden sm:block">
-        {FLOAT_CHARS.map((item, i) => (
-          <div key={i} className="absolute font-mono text-[11px] text-blue-500/20 animate-pulse select-none"
-            style={{ left: item.x, top: item.y, animationDelay: item.delay, animationDuration: item.duration }}>
-            {item.char}
+    <span className="font-mono text-[10px] text-blue-400/50 tracking-widest"
+      style={{ opacity: on ? 1 : 0, transition: "opacity 0.3s" }}>
+      ▶&nbsp;{TICKS[i]}
+    </span>
+  )
+}
+
+// ─── Animated counter ──────────────────────────────────────────────────────────
+function Counter({ to, suffix = "" }: { to: number; suffix?: string }) {
+  const [val, setVal] = useState(0)
+  const ref = useRef<HTMLSpanElement>(null)
+  const done = useRef(false)
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !done.current) {
+        done.current = true
+        let v = 0
+        const step = Math.ceil(to / 50)
+        const iv = setInterval(() => {
+          v = Math.min(v + step, to); setVal(v)
+          if (v >= to) clearInterval(iv)
+        }, 25)
+      }
+    })
+    if (ref.current) obs.observe(ref.current)
+    return () => obs.disconnect()
+  }, [to])
+  return <span ref={ref}>{val}{suffix}</span>
+}
+
+// ─── Terminal boot ─────────────────────────────────────────────────────────────
+const BOOT = [
+  { t: "CRYPTOVERSE OS v2.0.1 — INITIALIZING...", d: 0    },
+  { t: "► Loading cipher engines................OK", d: 320  },
+  { t: "► Connecting to contest server..........OK", d: 640  },
+  { t: "► Generating RSA-2048 keypair............OK", d: 960  },
+  { t: "► All systems nominal. Welcome.",            d: 1260 },
+]
+function TerminalBoot({ onDone }: { onDone: () => void }) {
+  const [lines, setLines] = useState<string[]>([])
+  useEffect(() => {
+    BOOT.forEach(({ t, d }) => setTimeout(() => setLines(l => [...l, t]), d))
+    setTimeout(onDone, 2000)
+  }, [onDone])
+  return (
+    <div className="fixed inset-0 z-[100] bg-[#030303] flex items-center justify-center p-8">
+      <div className="w-full max-w-lg">
+        <div className="border border-gray-800 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="flex items-center gap-2 px-4 py-3 bg-[#0a0a0a] border-b border-gray-800">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+            <span className="ml-2 text-[11px] text-gray-600 font-mono">cryptoverse — boot</span>
           </div>
-        ))}
+          <div className="p-6 bg-[#060606] space-y-2 min-h-[160px]">
+            {lines.map((l, i) => (
+              <div key={i} className="flex gap-2 font-mono text-[12px]">
+                <span className="text-blue-500 shrink-0">$</span>
+                <span className={i === lines.length - 1 ? "text-emerald-400" : "text-gray-500"}>{l}</span>
+              </div>
+            ))}
+            <div className="flex gap-2 items-center">
+              <span className="text-blue-500 font-mono text-[12px]">$</span>
+              <span className="w-2 h-[14px] bg-blue-400 animate-[pulse_0.8s_ease-in-out_infinite]" />
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(rgba(59,130,246,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.5) 1px, transparent 1px)`,
-          backgroundSize: "60px 60px",
-        }}
-      />
-      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#0a0a0a] to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
     </div>
   )
 }
 
-const FLOAT_CHARS = [
-  { x: "8%",  y: "15%", char: "3A F2 09", delay: "0s",   duration: "4s"   },
-  { x: "82%", y: "12%", char: "C7 1B E4", delay: "0.8s", duration: "5s"   },
-  { x: "5%",  y: "50%", char: "FF 00 AB", delay: "1.2s", duration: "6s"   },
-  { x: "88%", y: "45%", char: "72 D3 8C", delay: "0.4s", duration: "4.5s" },
-  { x: "15%", y: "78%", char: "01 00 01", delay: "2s",   duration: "5.5s" },
-  { x: "75%", y: "75%", char: "AES128",   delay: "1.6s", duration: "4s"   },
-  { x: "45%", y: "88%", char: "SHA256",   delay: "0.2s", duration: "7s"   },
-  { x: "60%", y: "22%", char: "RSA2048",  delay: "3s",   duration: "4s"   },
-  { x: "30%", y: "8%",  char: "XOR ⊕",   delay: "1s",   duration: "6s"   },
-  { x: "92%", y: "68%", char: "KEY→IV",   delay: "2.4s", duration: "5s"   },
-]
-
-const modules = [
-  {
-    title: "Classical Ciphers",
-    subtitle: "Caesar · Vigenère · Playfair · Hill · Rail Fence · Mono",
-    description: "Explore historical encryption techniques with interactive step-by-step visualizations.",
-    href: "/classical",
-    accent: "blue",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.4"/>
-        <path d="M10 6v4.5l3 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-      </svg>
-    ),
-    tag: "6 Ciphers",
-    stat: "2400 BC",
-    statLabel: "Origins",
-  },
-  {
-    title: "Symmetric Key",
-    subtitle: "AES-128 · DES · 3DES",
-    description: "Visualize block cipher rounds — SubBytes, ShiftRows, MixColumns, Feistel networks.",
-    href: "/symmetric",
-    accent: "emerald",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M7.5 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm0 0h5m0 0v2m0-2V8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-      </svg>
-    ),
-    tag: "Block Cipher",
-    stat: "128 bit",
-    statLabel: "Key Size",
-  },
-  {
-    title: "Hashing & Signatures",
-    subtitle: "SHA-256 · SHA-512 · Avalanche · RSA-2048",
-    description: "Compute hashes, visualize avalanche effect, and demo RSA digital signatures.",
-    href: "/hashing",
-    accent: "violet",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M4 7h12M4 13h12M8 3.5v13M12 3.5v13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-      </svg>
-    ),
-    tag: "4 Algorithms",
-    stat: "256 bit",
-    statLabel: "Digest",
-  },
-  {
-    title: "Asymmetric Encryption",
-    subtitle: "RSA-2048 · ECDH · Key Exchange · Signatures",
-    description: "Encrypt with public keys, decrypt with private keys, and simulate Diffie-Hellman key exchange.",
-    href: "/asymmetric",
-    accent: "amber",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M5 10h4m6 0h-4m0-3v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-        <circle cx="5" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-        <circle cx="15" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-      </svg>
-    ),
-    tag: "Public Key",
-    stat: "2048 bit",
-    statLabel: "RSA Key",
-  },
-  {
-    title: "Performance Dashboard",
-    subtitle: "Benchmarks · Security Ratings · Radar Analysis",
-    description: "Compare algorithm speeds, security levels, and trade-offs with live visualizations.",
-    href: "/dashboard",
-    accent: "rose",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M3 14L7.5 9l4 3.5L16 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-    tag: "Analytics",
-    stat: "Live",
-    statLabel: "Benchmarks",
-  },
-]
-
-const ACCENT_STYLES: Record<string, {
-  border: string; glow: string; icon: string; tag: string;
-  stat: string; hover: string; badge: string;
-}> = {
-  blue:    { border: "hover:border-blue-500/50",    glow: "group-hover:bg-blue-500/5",    icon: "text-blue-400",    tag: "bg-blue-500/10 text-blue-400 border-blue-500/20",       stat: "text-blue-400",    hover: "group-hover:text-blue-300",    badge: "bg-blue-500/20"    },
-  emerald: { border: "hover:border-emerald-500/50", glow: "group-hover:bg-emerald-500/5", icon: "text-emerald-400", tag: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", stat: "text-emerald-400", hover: "group-hover:text-emerald-300", badge: "bg-emerald-500/20" },
-  violet:  { border: "hover:border-violet-500/50",  glow: "group-hover:bg-violet-500/5",  icon: "text-violet-400",  tag: "bg-violet-500/10 text-violet-400 border-violet-500/20",   stat: "text-violet-400",  hover: "group-hover:text-violet-300",  badge: "bg-violet-500/20"  },
-  amber:   { border: "hover:border-amber-500/50",   glow: "group-hover:bg-amber-500/5",   icon: "text-amber-400",   tag: "bg-amber-500/10 text-amber-400 border-amber-500/20",      stat: "text-amber-400",   hover: "group-hover:text-amber-300",   badge: "bg-amber-500/20"   },
-  rose:    { border: "hover:border-rose-500/50",    glow: "group-hover:bg-rose-500/5",    icon: "text-rose-400",    tag: "bg-rose-500/10 text-rose-400 border-rose-500/20",         stat: "text-rose-400",    hover: "group-hover:text-rose-300",    badge: "bg-rose-500/20"    },
+// ─── useParallax: scroll-driven value ─────────────────────────────────────────
+function useScrollY() {
+  const [y, setY]             = useState(0)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (!mounted) return
+    const fn = () => setY(window.scrollY)
+    window.addEventListener("scroll", fn, { passive: true })
+    return () => window.removeEventListener("scroll", fn)
+  }, [mounted])
+  return y
 }
 
-const stats = [
-  { value: "6+",   label: "Ciphers"      },
-  { value: "10",   label: "AES Rounds"   },
-  { value: "2048", label: "RSA Bits"     },
-  { value: "100%", label: "Educational"  },
+// ─── 3D Tilt Card ──────────────────────────────────────────────────────────────
+function TiltCard({
+  children, color, className = "", style = {},
+}: {
+  children: React.ReactNode
+  color: string
+  className?: string
+  style?: React.CSSProperties
+}) {
+  const ref      = useRef<HTMLDivElement>(null)
+  const raf      = useRef<number | undefined>(undefined)
+  const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 50 })
+  const [hov, setHov]   = useState(false)
+
+  const onMove = useCallback((e: React.MouseEvent) => {
+    const el = ref.current; if (!el) return
+    cancelAnimationFrame(raf.current!)
+    raf.current = requestAnimationFrame(() => {
+      const { left, top, width, height } = el.getBoundingClientRect()
+      const x = (e.clientX - left) / width
+      const y = (e.clientY - top) / height
+      setTilt({
+        rx: (y - 0.5) * -18,
+        ry: (x - 0.5) *  18,
+        gx: x * 100,
+        gy: y * 100,
+      })
+    })
+  }, [])
+
+  const onLeave = useCallback(() => {
+    setHov(false)
+    setTilt({ rx: 0, ry: 0, gx: 50, gy: 50 })
+  }, [])
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={onMove}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={onLeave}
+      className={className}
+      style={{
+        ...style,
+        transform: hov
+          ? `perspective(900px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg) scale3d(1.02,1.02,1.02)`
+          : "perspective(900px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)",
+        transition: hov ? "transform 0.1s linear" : "transform 0.6s cubic-bezier(0.23,1,0.32,1)",
+        transformStyle: "preserve-3d",
+      }}
+    >
+      {/* Dynamic gradient highlight following cursor */}
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none z-10 opacity-0 transition-opacity duration-300"
+        style={{
+          opacity: hov ? 1 : 0,
+          background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, ${color}18 0%, transparent 65%)`,
+        }}
+      />
+      {/* Gloss shine */}
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none z-10"
+        style={{
+          background: hov
+            ? `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.04) 0%, transparent 50%)`
+            : "none",
+        }}
+      />
+      {children}
+    </div>
+  )
+}
+
+// ─── Modules data ──────────────────────────────────────────────────────────────
+const MODULES = [
+  {
+    id: "01", title: "Classical Ciphers",
+    sub: "Caesar · Vigenère · Playfair · Hill · Rail Fence",
+    desc: "Walk through ancient encryption letter-by-letter. Watch substitutions happen in real time with animated grids.",
+    href: "/classical", color: "#3b82f6",
+    icon: "A→D", tags: ["Shift", "Polyalpha", "Digraph"],
+    stat: "2400 BC", statLabel: "Origins",
+    preview: ["HELLO", "↓ +3", "KHOOR"],
+  },
+  {
+    id: "02", title: "Symmetric Key",
+    sub: "AES-128 · DES · 3DES · Feistel Network",
+    desc: "Every AES round visualized — SubBytes, ShiftRows, MixColumns with a live color-coded 4×4 state matrix.",
+    href: "/symmetric", color: "#10b981",
+    icon: "⊕", tags: ["Block Cipher", "10 Rounds"],
+    stat: "128 bit", statLabel: "Key Size",
+    preview: ["PLAINTEXT", "↓ AES", "C7 1B E4 F2"],
+  },
+  {
+    id: "03", title: "Hashing & Signatures",
+    sub: "SHA-256 · SHA-512 · Avalanche Effect",
+    desc: "Flip one bit and watch the avalanche cascade across 256 bits. Sign and verify with real RSA-2048 keys.",
+    href: "/hashing", color: "#8b5cf6",
+    icon: "#", tags: ["One-way", "Avalanche"],
+    stat: "256 bit", statLabel: "Digest",
+    preview: ["hello", "↓ SHA-256", "2CF24D..."],
+  },
+  {
+    id: "04", title: "Asymmetric Encryption",
+    sub: "RSA-2048 · ECDH · Key Exchange",
+    desc: "Generate real keypairs in browser. Encrypt with public, decrypt with private. Simulate Diffie-Hellman.",
+    href: "/asymmetric", color: "#f59e0b",
+    icon: "🔑", tags: ["Public Key", "ECDH"],
+    stat: "2048 bit", statLabel: "RSA Key",
+    preview: ["PUB KEY", "↓ RSA", "CIPHERTEXT"],
+  },
+  {
+    id: "05", title: "Daily Contest",
+    sub: "Live · Global Leaderboard · Elo Rating",
+    desc: "One new cipher puzzle every midnight. Earn Elo rating, climb from Novice to Master, and compete globally.",
+    href: "/contest", color: "#ef4444",
+    icon: "★", tags: ["🔴 Live", "Rated"],
+    stat: "Daily", statLabel: "Resets At",
+    preview: ["KHOOR ZRUOG", "↓ Decrypt", "??? ????"],
+  },
+  {
+    id: "06", title: "Dashboard",
+    sub: "Benchmarks · Radar · Timeline",
+    desc: "Compare 9 algorithms across speed, security, memory, and simplicity with animated radar charts and timelines.",
+    href: "/dashboard", color: "#ec4899",
+    icon: "↑", tags: ["Analytics", "9 Algos"],
+    stat: "Live", statLabel: "Benchmarks",
+    preview: ["AES ████████", "DES █████░░░", "RSA ██████░░"],
+  },
 ]
 
-export default function HomePage() {
+// ─── Premium module card ───────────────────────────────────────────────────────
+function ModuleCard({ mod, index }: { mod: typeof MODULES[0]; index: number }) {
+  const [visible, setVisible] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect() } },
+      { threshold: 0.08 }
+    )
+    if (wrapRef.current) obs.observe(wrapRef.current)
+    return () => obs.disconnect()
+  }, [])
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white overflow-hidden">
-      <HexGrid />
+    <div
+      ref={wrapRef}
+      style={{
+        opacity:    visible ? 1 : 0,
+        transform:  visible ? "translateY(0) scale(1)" : "translateY(32px) scale(0.97)",
+        transition: `opacity 0.65s cubic-bezier(0.23,1,0.32,1) ${index * 90}ms,
+                     transform 0.65s cubic-bezier(0.23,1,0.32,1) ${index * 90}ms`,
+      }}
+    >
+      <TiltCard
+        color={mod.color}
+        className="relative rounded-2xl overflow-hidden h-full"
+        style={{
+          background: "#080808",
+          border: `1px solid ${hovered ? mod.color + "35" : "rgba(255,255,255,0.065)"}`,
+          transition: "border-color 0.4s",
+          boxShadow: hovered
+            ? `0 0 0 1px ${mod.color}20, 0 20px 60px ${mod.color}12, 0 4px 16px rgba(0,0,0,0.6)`
+            : "0 4px 24px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Scanline texture overlay */}
+        <div className="absolute inset-0 pointer-events-none z-0"
+          style={{
+            backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)",
+          }} />
 
-      <section className="relative pt-12 sm:pt-16 md:pt-20 pb-12 md:pb-16 px-5 sm:px-8 md:px-10 max-w-5xl mx-auto">
+        {/* Corner accent */}
+        <div className="absolute top-0 right-0 w-20 h-20 pointer-events-none"
+          style={{
+            background: `linear-gradient(225deg, ${mod.color}20, transparent 60%)`,
+            opacity: hovered ? 1 : 0.4,
+            transition: "opacity 0.4s",
+          }} />
 
-        {/* Phase badge */}
-        <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1 mb-6 md:mb-8">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
-          </span>
-          <span className="text-[10px] sm:text-[11px] text-blue-400 font-medium tracking-widest uppercase">
-            Phase 1 — Educational Mode
-          </span>
-        </div>
+        {/* Bottom glow */}
+        <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none"
+          style={{
+            background: `linear-gradient(90deg, transparent, ${mod.color}60, transparent)`,
+            opacity: hovered ? 1 : 0,
+            transition: "opacity 0.4s",
+          }} />
 
-        {/* Headline */}
-        <div className="mb-5 md:mb-6">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] mb-3 md:mb-4">
-            <span className="text-white">Crypto</span>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400">Verse</span>
-          </h1>
-          <div className="text-[10px] sm:text-[12px] md:text-[13px] font-mono text-gray-600 tracking-widest uppercase mb-4 md:mb-5 truncate">
-            <CipherText text="INTERACTIVE CRYPTOGRAPHY SIMULATION LAB" />
-          </div>
-          <p className="text-[13px] sm:text-[14px] md:text-[15px] text-gray-400 max-w-lg leading-relaxed">
-            Learn and visualize cryptographic algorithms — from ancient Caesar ciphers to modern AES encryption — with step-by-step interactive breakdowns.
-          </p>
-        </div>
-
-        {/* CTAs */}
-        <div className="flex flex-wrap items-center gap-3 mb-10 md:mb-16">
-          <Link href="/classical"
-            className="group relative inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30">
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-              <path d="M2 2l10 5-10 5V2z" fill="currentColor"/>
-            </svg>
-            Start Exploring
-            <span className="absolute inset-0 rounded-xl ring-1 ring-white/10" />
-          </Link>
-          <Link href="/dashboard"
-            className="inline-flex items-center gap-2 border border-gray-700/60 text-gray-400 hover:text-white hover:border-gray-500 px-5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200">
-            View Dashboard
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2.5 6h7m0 0L6.5 3m3 3L6.5 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Link>
-        </div>
-
-        {/* Stats — 2 cols on mobile, 4 on sm+ */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-800/40 rounded-2xl overflow-hidden border border-gray-800/60 mb-12 md:mb-20">
-          {stats.map(({ value, label }) => (
-            <div key={label} className="bg-[#0d0d0d] px-4 sm:px-6 py-4 sm:py-5 text-center">
-              <p className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-0.5">{value}</p>
-              <p className="text-[10px] sm:text-[11px] text-gray-600 uppercase tracking-wider">{label}</p>
+        <div
+          className="relative z-10 p-5 flex flex-col h-full"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          {/* Header row */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              {/* ID chip */}
+              <span className="font-mono text-[9px] text-gray-700 border border-gray-800 px-1.5 py-0.5 rounded">
+                {mod.id}
+              </span>
+              {/* Icon */}
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[16px] font-black"
+                style={{
+                  background:  `${mod.color}12`,
+                  border:      `1px solid ${mod.color}30`,
+                  color:        mod.color,
+                  boxShadow:   hovered ? `0 0 16px ${mod.color}30` : "none",
+                  transition:  "box-shadow 0.3s",
+                  transform:   "translateZ(20px)",
+                }}
+              >
+                {mod.icon}
+              </div>
             </div>
-          ))}
-        </div>
+            {/* Stat */}
+            <div className="text-right" style={{ transform: "translateZ(10px)" }}>
+              <p className="text-[17px] font-black leading-none" style={{ color: mod.color }}>
+                {mod.stat}
+              </p>
+              <p className="text-[9px] text-gray-600 tracking-widest uppercase mt-0.5">{mod.statLabel}</p>
+            </div>
+          </div>
 
-        {/* Section heading */}
-        <div className="flex items-center gap-4 mb-4 md:mb-6">
-          <p className="text-[11px] font-semibold text-gray-600 uppercase tracking-[0.16em] shrink-0">Modules</p>
-          <div className="flex-1 h-px bg-gray-800/60" />
-          <p className="text-[11px] text-gray-700 font-mono shrink-0">05 available</p>
-        </div>
-
-        {/* Module cards — 1 col mobile, 2 col md+, last card full width if odd */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {modules.map((mod, idx) => {
-            const s = ACCENT_STYLES[mod.accent]
-            const isLastOdd = idx === modules.length - 1 && modules.length % 2 !== 0
-            return (
-              <Link key={mod.href} href={mod.href}
-                className={`group relative bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-4 sm:p-5 transition-all duration-300 overflow-hidden ${s.border} ${isLastOdd ? "md:col-span-2" : ""}`}>
-
-                <div className={`absolute inset-0 transition-all duration-500 ${s.glow}`} />
-
-                {/* Top row */}
-                <div className="relative flex items-start justify-between mb-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center border border-gray-800/80 ${s.badge} ${s.icon}`}>
-                    {mod.icon}
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-lg sm:text-xl font-bold ${s.stat} leading-none`}>{mod.stat}</p>
-                    <p className="text-[10px] text-gray-600 tracking-wider mt-0.5">{mod.statLabel}</p>
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="relative">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <h3 className={`text-[14px] font-semibold text-white transition-colors ${s.hover}`}>{mod.title}</h3>
-                    <span className={`text-[9px] font-bold uppercase tracking-widest border px-1.5 py-0.5 rounded-full ${s.tag}`}>
-                      {mod.tag}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-600 font-mono mb-2 tracking-wide leading-relaxed">{mod.subtitle}</p>
-                  <p className="text-[12px] text-gray-500 leading-relaxed">{mod.description}</p>
-                </div>
-
-                {/* Arrow */}
-                <div className="relative mt-3 sm:mt-4 flex items-center justify-end">
-                  <span className={`text-[11px] font-medium transition-all ${s.icon} flex items-center gap-1 opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 duration-200`}>
-                    Open module
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2.5 6h7m0 0L6.5 3m3 3L6.5 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
-                </div>
-
-                <div className={`absolute bottom-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-all duration-500 bg-gradient-to-r from-transparent via-current to-transparent ${s.icon}`} />
-              </Link>
-            )
-          })}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-12 md:mt-16 pt-6 border-t border-gray-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[10px] sm:text-[11px] text-gray-700 font-mono tracking-wider">
-            CRYPTOVERSE — EDUCATIONAL PLATFORM
+          {/* Title */}
+          <h3 className="text-[15px] font-bold text-white mb-0.5 leading-tight"
+            style={{ transform: "translateZ(8px)" }}>
+            {mod.title}
+          </h3>
+          <p className="text-[10px] font-mono text-gray-600 mb-3 tracking-wide leading-relaxed">
+            {mod.sub}
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-            {[
-              { label: "Classical",   href: "/classical"   },
-              { label: "Symmetric",   href: "/symmetric"   },
-              { label: "Hashing",     href: "/hashing"     },
-              { label: "Asymmetric",  href: "/asymmetric"  },
-              { label: "Dashboard",   href: "/dashboard"   },
-            ].map(({ label, href }) => (
-              <Link key={label} href={href}
-                className="text-[11px] text-gray-700 hover:text-gray-400 transition-colors">
-                {label}
-              </Link>
+
+          {/* Live preview terminal */}
+          <div
+            className="rounded-xl p-3 mb-4 font-mono text-[10px] leading-relaxed"
+            style={{
+              background: "#030303",
+              border: `1px solid ${mod.color}18`,
+              transform: "translateZ(4px)",
+              opacity: hovered ? 1 : 0.7,
+              transition: "opacity 0.3s",
+            }}
+          >
+            {mod.preview.map((line, i) => (
+              <div key={i} className={i === 1 ? "text-gray-600 pl-1" : i === 0 ? "text-gray-400" : ""}
+                style={{ color: i === 2 ? mod.color : undefined }}>
+                {i === 1 ? "" : "> "}{line}
+              </div>
             ))}
           </div>
+
+          {/* Description */}
+          <p className="text-[11.5px] text-gray-500 leading-relaxed mb-4 flex-1" style={{ fontFamily: "system-ui" }}>
+            {mod.desc}
+          </p>
+
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {mod.tags.map(t => (
+              <span key={t}
+                className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                style={{
+                  color: mod.color, border: `1px solid ${mod.color}30`,
+                  background: `${mod.color}0d`,
+                }}>
+                {t}
+              </span>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <Link href={mod.href}
+            className="group/btn flex items-center justify-between px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all duration-200"
+            style={{
+              background:   hovered ? `${mod.color}18` : "transparent",
+              border:       `1px solid ${mod.color}${hovered ? "40" : "20"}`,
+              color:        hovered ? mod.color : "#6b7280",
+              transition:   "all 0.25s",
+            }}>
+            <span>Open module</span>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"
+              style={{ transform: hovered ? "translateX(3px)" : "translateX(0)", transition: "transform 0.25s" }}>
+              <path d="M1.5 6.5h10M7.5 2.5l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Link>
+        </div>
+      </TiltCard>
+    </div>
+  )
+}
+
+// ─── Floating particles ────────────────────────────────────────────────────────
+const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
+  x: `${(i * 5.8 + 3) % 96}%`,
+  y: `${(i * 6.1 + 5) % 92}%`,
+  val: ["3A","F2","C7","FF","AES","SHA","RSA","XOR","⊕","KEY","IV","01","E4","72","∑","∂","∇","🔑"][i],
+  delay: `${(i * 0.37) % 4}s`,
+  dur:   `${4 + (i % 4)}s`,
+}))
+
+// ─── Glitch text ───────────────────────────────────────────────────────────────
+// glitch state must never be true on the server — only fire after mount.
+function GlitchText({ text, color }: { text: string; color: string }) {
+  const [mounted, setMounted] = useState(false)
+  const [glitch,  setGlitch]  = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    let timeout: ReturnType<typeof setTimeout>
+    const schedule = () => {
+      timeout = setTimeout(() => {
+        setGlitch(true)
+        setTimeout(() => { setGlitch(false); schedule() }, 120)
+      }, rand(3500, 6000))
+    }
+    schedule()
+    return () => clearTimeout(timeout)
+  }, [mounted])
+
+  return (
+    <span className="relative inline-block select-none" style={{ color }}>
+      {text}
+      {mounted && glitch && (
+        <>
+          <span className="absolute inset-0 pointer-events-none" style={{
+            color: "#ff0055", transform: "translate(-2px,0)", opacity: 0.7, clipPath: "inset(30% 0 50% 0)",
+          }}>{text}</span>
+          <span className="absolute inset-0 pointer-events-none" style={{
+            color: "#00ffff", transform: "translate(2px,0)", opacity: 0.7, clipPath: "inset(60% 0 10% 0)",
+          }}>{text}</span>
+        </>
+      )}
+    </span>
+  )
+}
+
+// ─── Scroll progress bar ───────────────────────────────────────────────────────
+function ScrollBar() {
+  const [pct, setPct]         = useState(0)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (!mounted) return
+    const fn = () => {
+      const { scrollTop: st, scrollHeight: sh, clientHeight: ch } = document.documentElement
+      setPct(sh - ch > 0 ? (st / (sh - ch)) * 100 : 0)
+    }
+    window.addEventListener("scroll", fn, { passive: true })
+    return () => window.removeEventListener("scroll", fn)
+  }, [mounted])
+  if (!mounted) return null
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[200] h-[2px] bg-transparent pointer-events-none">
+      <div className="h-full transition-all duration-100"
+        style={{ width: `${pct}%`, background: "linear-gradient(90deg,#3b82f6,#8b5cf6,#ec4899)" }} />
+    </div>
+  )
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
+export default function HomePage() {
+  // Boot is now handled by layout.tsx — homepage just starts in booted state
+  const [booted, setBooted] = useState(false)
+  const scrollY = useScrollY()
+
+  useEffect(() => {
+    // Small delay so hero animations play after layout fade-in
+    const t = setTimeout(() => setBooted(true), 200)
+    return () => clearTimeout(t)
+  }, [])
+
+  const heroTitle = useScramble("CRYPTOVERSE", 25, 300)
+  const heroSub   = useScramble("INTERACTIVE CRYPTOGRAPHY LAB", 18, 600)
+
+  // Parallax values derived from scrollY
+  const parallaxSlow  = -scrollY * 0.18
+  const parallaxMid   = -scrollY * 0.08
+  const parallaxFast  = -scrollY * 0.35
+  const heroOpacity   = clamp(1 - scrollY / 500, 0, 1)
+
+  return (
+    <>
+      <ScrollBar />
+
+      <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden"
+        style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+
+        {/* ╔══ HERO ═══════════════════════════════════════════════════════╗ */}
+        <section className="relative min-h-screen flex flex-col justify-center overflow-hidden">
+
+          {/* Parallax matrix background */}
+          <div className="absolute inset-0" style={{ transform: `translateY(${parallaxFast}px)` }}>
+            <MatrixRain />
+          </div>
+
+          {/* Radial glow — moves slightly on scroll */}
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ transform: `translateY(${parallaxSlow}px)` }}>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full"
+              style={{ background: "radial-gradient(circle, rgba(59,130,246,0.07) 0%, transparent 70%)" }} />
+            <div className="absolute top-1/3 left-1/3 w-[300px] h-[300px] rounded-full"
+              style={{ background: "radial-gradient(circle, rgba(139,92,246,0.04) 0%, transparent 70%)" }} />
+          </div>
+
+          {/* Hex particles parallax mid */}
+          <div className="absolute inset-0 pointer-events-none select-none hidden sm:block"
+            style={{ transform: `translateY(${parallaxMid}px)` }}>
+            {PARTICLES.map((p, i) => (
+              <span key={i} className="absolute font-mono text-[10px] text-blue-500/12 animate-pulse"
+                style={{ left: p.x, top: p.y, animationDelay: p.delay, animationDuration: p.dur }}>
+                {p.val}
+              </span>
+            ))}
+          </div>
+
+          {/* Grid */}
+          <div className="absolute inset-0 opacity-[0.022] pointer-events-none"
+            style={{
+              backgroundImage: "linear-gradient(rgba(59,130,246,1) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,1) 1px,transparent 1px)",
+              backgroundSize: "80px 80px",
+              transform: `translateY(${parallaxMid}px)`,
+            }} />
+
+          {/* Vignette */}
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ background: "radial-gradient(ellipse at center, transparent 35%, #050505 100%)" }} />
+
+          {/* Hero content */}
+          <div className="relative z-10 px-6 sm:px-10 max-w-5xl mx-auto w-full pt-24 pb-20"
+            style={{ opacity: heroOpacity, transform: `translateY(${parallaxMid}px)` }}>
+
+            {/* Status pill */}
+            <div className="inline-flex items-center gap-2.5 border rounded-full px-3.5 py-1.5 mb-10"
+              style={{
+                borderColor: "rgba(59,130,246,0.22)",
+                background: "rgba(59,130,246,0.05)",
+                opacity: booted ? 1 : 0,
+                transform: booted ? "translateY(0)" : "translateY(-12px)",
+                transition: "all 0.7s cubic-bezier(0.23,1,0.32,1) 0.1s",
+              }}>
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
+              </span>
+              <span className="text-[10px] text-blue-400 tracking-[0.18em] uppercase">System Online</span>
+              <span className="text-[10px] text-gray-700">|</span>
+              <CipherTicker />
+            </div>
+
+            {/* Giant title */}
+            <div style={{
+              opacity: booted ? 1 : 0,
+              transform: booted ? "translateY(0)" : "translateY(24px)",
+              transition: "all 0.9s cubic-bezier(0.23,1,0.32,1) 0.3s",
+            }}>
+              <p className="text-[10px] text-gray-700 tracking-[0.4em] uppercase mb-4">▶ DECRYPTING...</p>
+
+              <h1 className="leading-none tracking-[-0.03em] mb-3"
+                style={{ fontSize: "clamp(60px, 12vw, 120px)", fontWeight: 900 }}>
+                <GlitchText text={heroTitle}
+                  color="transparent" />
+                <span style={{
+                  background: "linear-gradient(135deg, #fff 0%, #93c5fd 35%, #3b82f6 65%, #4f46e5 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  display: "block",
+                  lineHeight: 1,
+                }}>
+                  {heroTitle}
+                </span>
+              </h1>
+
+              <p className="text-[12px] sm:text-[14px] tracking-[0.28em] uppercase mb-8"
+                style={{ color: "rgba(96,165,250,0.45)" }}>
+                {heroSub}
+              </p>
+            </div>
+
+            {/* Description */}
+            <p className="text-[14px] sm:text-[15px] text-gray-400 max-w-xl leading-relaxed mb-10"
+              style={{
+                fontFamily: "system-ui",
+                opacity: booted ? 1 : 0,
+                transform: booted ? "translateY(0)" : "translateY(16px)",
+                transition: "all 0.9s cubic-bezier(0.23,1,0.32,1) 0.55s",
+              }}>
+              From ancient Caesar shifts to modern AES rounds — explore, interact,
+              and compete in a cryptography lab that actually shows you what's happening inside.
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-wrap gap-3 mb-16"
+              style={{
+                opacity: booted ? 1 : 0,
+                transform: booted ? "translateY(0)" : "translateY(12px)",
+                transition: "all 0.9s cubic-bezier(0.23,1,0.32,1) 0.75s",
+              }}>
+              <Link href="/classical"
+                className="relative group inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold text-white overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                  boxShadow: "0 0 30px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.4)",
+                }}>
+                <span className="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.06] transition-opacity duration-200 rounded-xl" />
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M1.5 1.5l8 4-8 4V1.5z" fill="currentColor"/>
+                </svg>
+                Start Exploring
+              </Link>
+              <Link href="/contest"
+                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold transition-all duration-200 hover:bg-red-500/10"
+                style={{ border: "1px solid rgba(239,68,68,0.35)", color: "#f87171" }}>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                </span>
+                Daily Contest
+              </Link>
+              <Link href="/dashboard"
+                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold text-gray-500 hover:text-gray-300 transition-colors duration-200"
+                style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+                Dashboard
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M1.5 5.5h8M6.5 2.5l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </Link>
+            </div>
+
+            {/* Stats bar */}
+            <div className="overflow-hidden rounded-2xl"
+              style={{
+                border: "1px solid rgba(255,255,255,0.055)",
+                opacity: booted ? 1 : 0,
+                transition: "opacity 0.9s ease 1s",
+              }}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[rgba(255,255,255,0.04)]">
+                {[
+                  { n: 6,    s: "+", label: "Ciphers",    c: "#3b82f6" },
+                  { n: 10,   s: "",  label: "AES Rounds", c: "#10b981" },
+                  { n: 2048, s: "b", label: "RSA Key",    c: "#8b5cf6" },
+                  { n: 9,    s: "",  label: "Algorithms", c: "#f59e0b" },
+                ].map(({ n, s, label, c }) => (
+                  <div key={label} className="bg-[#080808] px-5 py-5 text-center">
+                    <p className="text-[22px] sm:text-[26px] font-black leading-none mb-1" style={{ color: c }}>
+                      <Counter to={n} suffix={s} />
+                    </p>
+                    <p className="text-[9px] text-gray-600 uppercase tracking-[0.15em]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Scroll cue */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5"
+            style={{ opacity: heroOpacity }}>
+            <span className="text-[8px] text-gray-700 tracking-[0.3em] uppercase animate-bounce">Scroll</span>
+            <div className="w-px h-8 overflow-hidden">
+              <div className="w-full bg-blue-500/50 animate-[drip_1.5s_ease-in-out_infinite]"
+                style={{ height: "50%", animation: "drip 1.5s ease-in-out infinite" }} />
+            </div>
+          </div>
+        </section>
+
+        {/* ╔══ SECTION DIVIDER ═════════════════════════════════════════════╗ */}
+        <div className="relative h-px overflow-visible flex items-center justify-center">
+          <div className="absolute inset-x-0 top-0 h-px"
+            style={{ background: "linear-gradient(90deg, transparent, rgba(59,130,246,0.3), transparent)" }} />
+          <div className="relative z-10 bg-[#050505] px-4">
+            <span className="font-mono text-[9px] text-blue-500/40 tracking-[0.3em] uppercase">
+              ── MODULES BELOW ──
+            </span>
+          </div>
         </div>
 
-      </section>
-    </div>
+        {/* ╔══ MODULES ═════════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-24 max-w-5xl mx-auto">
+          {/* Section header */}
+          <div className="mb-12">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="font-mono text-[10px] text-blue-500 tracking-[0.3em] uppercase font-bold">// MODULES</span>
+              <div className="flex-1 h-px"
+                style={{ background: "linear-gradient(90deg, rgba(59,130,246,0.25), transparent)" }} />
+              <span className="font-mono text-[9px] text-gray-700">06 available</span>
+            </div>
+            <h2 className="leading-tight mb-3"
+              style={{ fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 900 }}>
+              <span className="text-white">Choose Your </span>
+              <GlitchText text="Module" color="#3b82f6" />
+            </h2>
+            <p className="text-[13px] text-gray-600 max-w-md" style={{ fontFamily: "system-ui" }}>
+              Hover cards to feel the 3D depth. Every module is a live interactive simulation.
+            </p>
+          </div>
+
+          {/* 3-col grid on large, 2-col on md, 1-col on sm */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {MODULES.map((mod, i) => (
+              <ModuleCard key={mod.id} mod={mod} index={i} />
+            ))}
+          </div>
+        </section>
+
+        {/* ╔══ BOTTOM STRIP ════════════════════════════════════════════════╗ */}
+        <footer className="px-6 sm:px-10 py-8"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.045)" }}>
+          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center"
+                style={{ boxShadow: "0 0 16px rgba(59,130,246,0.4)" }}>
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1.5L2 4.5v5l5 3 5-3v-5L7 1.5z" stroke="white" strokeWidth="1.3" strokeLinejoin="round"/>
+                  <circle cx="7" cy="7" r="1.5" fill="white"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[13px] font-bold text-white leading-tight">CryptoVerse</p>
+                <p className="text-[9px] text-gray-700 tracking-[0.15em] uppercase">Educational Platform v2.0</p>
+              </div>
+            </div>
+            <nav className="flex flex-wrap gap-x-5 gap-y-2">
+              {[
+                ["Classical",  "/classical"],
+                ["Symmetric",  "/symmetric"],
+                ["Hashing",    "/hashing"],
+                ["Asymmetric", "/asymmetric"],
+                ["Contest",    "/contest"],
+                ["Dashboard",  "/dashboard"],
+                ["Profile",    "/profile"],
+              ].map(([label, href]) => (
+                <Link key={label} href={href}
+                  className="text-[11px] font-mono text-gray-700 hover:text-blue-400 transition-colors tracking-wider">
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </footer>
+      </div>
+
+      {/* Drip keyframe */}
+      <style>{`
+        @keyframes drip {
+          0%   { transform: translateY(-100%); opacity: 1; }
+          80%  { transform: translateY(200%);  opacity: 0.2; }
+          100% { transform: translateY(-100%); opacity: 0; }
+        }
+      `}</style>
+    </>
   )
 }

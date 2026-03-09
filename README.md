@@ -40,7 +40,7 @@ Animated round-by-round breakdowns of block ciphers:
 
 ## ⚖️ Licensing & Terms
 
-**Copyright © 2026 [Your Name/Organization]. All Rights Reserved.**
+**Copyright © 2026 Priyanshu Roy. All Rights Reserved.**
 
 This software is provided for **educational evaluation only**. You may download and run this project locally to inspect the code, but you are strictly prohibited from:
 1. Using this code in a production environment.
@@ -48,7 +48,7 @@ This software is provided for **educational evaluation only**. You may download 
 3. Hosting a public version of this lab without written consent.
 
 **For Commercial Licensing:**
-To obtain a license for corporate training, educational institutions, or integration into your own platform, please contact: `your-email@example.com`
+To obtain a license for corporate training, educational institutions, or integration into your own platform, please contact: `priyanshu712204@gmail.com`
 
 ---
 

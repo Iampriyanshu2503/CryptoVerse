@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext"
+import { useGame } from "@/lib/GameContext"
 import { supabase, type LeaderboardRow, type AllTimeRow } from "@/lib/supabase"
 import AuthModal from "@/components/AuthModal"
 
@@ -12,48 +13,205 @@ interface Puzzle {
 }
 
 const ALL_PUZZLES: Puzzle[] = [
-  { id:"d1",  cipher:"Caesar",         difficulty:"Easy",   points:100, keyInfo:"Shift: 3",
+  // ── Caesar ──────────────────────────────────────────────────────────────────
+  { id:"d1",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 3",
     plaintext:"HELLO WORLD",           ciphertext:"KHOOR ZRUOG",
     hints:["Caesar cipher — fixed shift","Shift is between 1–5","Shift = 3"] },
-  { id:"d2",  cipher:"Caesar",         difficulty:"Easy",   points:100, keyInfo:"Shift: 7",
+  { id:"d2",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 7",
     plaintext:"CRYPTOGRAPHY",          ciphertext:"JYFWAVNYHWOF",
     hints:["Caesar cipher","Shift is between 5–10","Shift = 7"] },
-  { id:"d3",  cipher:"Vigenère",       difficulty:"Medium", points:250, keyInfo:"Key: LEMON",
-    plaintext:"ATTACK AT DAWN",        ciphertext:"LXFOPV EF RNHR",
-    hints:["Polyalphabetic substitution","5-letter keyword","Key = LEMON"] },
-  { id:"d4",  cipher:"Vigenère",       difficulty:"Medium", points:250, keyInfo:"Key: KEY",
-    plaintext:"SEND HELP NOW",         ciphertext:"COXY RITP XGD",
-    hints:["Vigenère cipher","3-letter keyword","Key = KEY"] },
-  { id:"d5",  cipher:"Rail Fence",     difficulty:"Medium", points:250, keyInfo:"Rails: 3",
-    plaintext:"WE ARE DISCOVERED",     ciphertext:"WAREISERDECOVD",
-    hints:["Transposition cipher","Text written in zigzag","3 rails"] },
-  { id:"d6",  cipher:"Playfair",       difficulty:"Hard",   points:500, keyInfo:"Key: PLAYFAIR",
-    plaintext:"HIDE THE GOLD",         ciphertext:"BMNDZBXDKYBEJV",
-    hints:["Digraph cipher with 5×5 grid","Keyword fills the grid first","Key = PLAYFAIR"] },
-  { id:"d7",  cipher:"Monoalphabetic", difficulty:"Hard",   points:500, keyInfo:"Key: QWERTY...",
-    plaintext:"THE ENEMY ADVANCES",    ciphertext:"ZIT TCTPA QBVQCMTS",
-    hints:["Each letter maps to exactly one other","Frequency analysis helps","A→Q, B→W, C→E..."] },
-  { id:"d8",  cipher:"Caesar",         difficulty:"Easy",   points:100, keyInfo:"Shift: 13",
+  { id:"d3",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 13",
     plaintext:"NEVER GIVE UP",         ciphertext:"ARIRE TVIR HC",
     hints:["ROT-13 is a special case","Shift = 13","Each letter shifts halfway"] },
-  { id:"d9",  cipher:"Vigenère",       difficulty:"Hard",   points:400, keyInfo:"Key: CRYPTO",
-    plaintext:"RENDEZVOUS AT MIDNIGHT",ciphertext:"TIVHZBCCL LD EIFPVZOYP",
-    hints:["Long polyalphabetic key","6-letter keyword","Key = CRYPTO"] },
-  { id:"d10", cipher:"Rail Fence",     difficulty:"Easy",   points:100, keyInfo:"Rails: 2",
-    plaintext:"HELLO WORLD",           ciphertext:"HLOOLELWRD",
-    hints:["2-rail zigzag","Read odd then even positions","H_L_O → E_L_W_R_D"] },
-  { id:"d11", cipher:"Caesar",         difficulty:"Medium", points:200, keyInfo:"Shift: 19",
+  { id:"d4",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 1",
+    plaintext:"MEET ME AT NOON",       ciphertext:"NFFU NF BU OPPO",
+    hints:["Very small shift","Shift = 1","N→M, F→E"] },
+  { id:"d5",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 4",
+    plaintext:"KEEP IT SECRET",        ciphertext:"OIIT MX WIGVIX",
+    hints:["Caesar cipher","Shift is between 3–6","Shift = 4"] },
+  { id:"d6",  cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 10",
+    plaintext:"BREAK THE CODE",        ciphertext:"LBOKU DRO MYNO",
+    hints:["Caesar cipher","Shift is between 8–12","Shift = 10"] },
+  { id:"d7",  cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 19",
     plaintext:"DEFEND THE CASTLE",     ciphertext:"WXOXWM MAX VTLMAX",
     hints:["Large shift value","Shift > 15","Shift = 19"] },
-  { id:"d12", cipher:"Vigenère",       difficulty:"Medium", points:300, keyInfo:"Key: BEAM",
+  { id:"d8",  cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 17",
+    plaintext:"SOUND THE ALARM",       ciphertext:"JLFEU KYV RCRIT",
+    hints:["Caesar cipher","Shift > 14","Shift = 17"] },
+  { id:"d9",  cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 21",
+    plaintext:"TRUST NO ONE",          ciphertext:"OMJNO IJ JIZ",
+    hints:["Shift is close to the end of the alphabet","Shift > 18","Shift = 21"] },
+  { id:"d10", cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 23",
+    plaintext:"THE QUICK BROWN FOX",   ciphertext:"QEB NRFZH YOLTK CLU",
+    hints:["Unusual shift — try reverse direction","Shift = 23 or -3","Q→T, E→H, B→E"] },
+
+  // ── Vigenère ────────────────────────────────────────────────────────────────
+  { id:"d11", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: LEMON",
+    plaintext:"ATTACK AT DAWN",        ciphertext:"LXFOPV EF RNHR",
+    hints:["Polyalphabetic substitution","5-letter keyword","Key = LEMON"] },
+  { id:"d12", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: KEY",
+    plaintext:"SEND HELP NOW",         ciphertext:"COXY RITP XGD",
+    hints:["Vigenère cipher","3-letter keyword","Key = KEY"] },
+  { id:"d13", cipher:"Vigenère", difficulty:"Medium", points:300, keyInfo:"Key: BEAM",
     plaintext:"WINTER IS COMING",      ciphertext:"XMPXIW MW GOQQVO",
     hints:["4-letter keyword","Repeating key","Key = BEAM"] },
-  { id:"d13", cipher:"Monoalphabetic", difficulty:"Hard",   points:500, keyInfo:"Key: ZEBRAS...",
+  { id:"d14", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: CAT",
+    plaintext:"HIDE AND SEEK",         ciphertext:"JMLG CPF UGGM",
+    hints:["Short 3-letter key","Animal keyword","Key = CAT"] },
+  { id:"d15", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: SUN",
+    plaintext:"DARKNESS FALLS",        ciphertext:"VFEYBLVL XSPWV",
+    hints:["3-letter keyword","Nature-themed key","Key = SUN"] },
+  { id:"d16", cipher:"Vigenère", difficulty:"Hard",   points:400, keyInfo:"Key: CRYPTO",
+    plaintext:"RENDEZVOUS AT MIDNIGHT",ciphertext:"TIVHZBCCL LD EIFPVZOYP",
+    hints:["Long polyalphabetic key","6-letter keyword","Key = CRYPTO"] },
+  { id:"d17", cipher:"Vigenère", difficulty:"Hard",   points:400, keyInfo:"Key: SHADOW",
+    plaintext:"THE MISSION IS COMPLETE",ciphertext:"LYM FEJWBHB PK UHIBEMLM",
+    hints:["6-letter keyword","Dark-themed key","Key = SHADOW"] },
+  { id:"d18", cipher:"Vigenère", difficulty:"Hard",   points:450, keyInfo:"Key: ENIGMA",
+    plaintext:"BREAK ALL BARRIERS",    ciphertext:"FSIET ERL BGVVMIVW",
+    hints:["6-letter keyword","Famous cipher machine name","Key = ENIGMA"] },
+  { id:"d19", cipher:"Vigenère", difficulty:"Hard",   points:400, keyInfo:"Key: BLAZE",
+    plaintext:"STORM THE FORTRESS",    ciphertext:"HWGVQ XLM JSKLVIWW",
+    hints:["5-letter keyword","Fire-themed key","Key = BLAZE"] },
+  { id:"d20", cipher:"Vigenère", difficulty:"Hard",   points:500, keyInfo:"Key: QUANTUM",
+    plaintext:"SECURE THE PERIMETER",  ciphertext:"IUYNYC XLM DMVQQMXMV",
+    hints:["7-letter keyword","Physics-themed key","Key = QUANTUM"] },
+
+  // ── Rail Fence ──────────────────────────────────────────────────────────────
+  { id:"d21", cipher:"Rail Fence", difficulty:"Easy",   points:100, keyInfo:"Rails: 2",
+    plaintext:"HELLO WORLD",           ciphertext:"HLOOLELWRD",
+    hints:["2-rail zigzag","Alternate letters on each rail","Read top rail then bottom"] },
+  { id:"d22", cipher:"Rail Fence", difficulty:"Medium", points:250, keyInfo:"Rails: 3",
+    plaintext:"WE ARE DISCOVERED",     ciphertext:"WAREISERDECOVD",
+    hints:["Transposition cipher","Text written in zigzag","3 rails"] },
+  { id:"d23", cipher:"Rail Fence", difficulty:"Medium", points:250, keyInfo:"Rails: 3",
+    plaintext:"FLEE AT ONCE",          ciphertext:"FLATEOEC",
+    hints:["Rail fence — 3 rails","No substitution, only rearrangement","Read each rail in order"] },
+  { id:"d24", cipher:"Rail Fence", difficulty:"Medium", points:250, keyInfo:"Rails: 4",
+    plaintext:"MEET AT MIDNIGHT",      ciphertext:"MAMTMDETETIIGH",
+    hints:["4-rail zigzag","More rails = harder to crack","Read rail by rail top to bottom"] },
+  { id:"d25", cipher:"Rail Fence", difficulty:"Hard",   points:400, keyInfo:"Rails: 5",
+    plaintext:"CRYPTOGRAPHY IS AN ART",ciphertext:"CPAYOHAIRGRNRTSAANT",
+    hints:["5-rail zigzag","Count positions carefully","Each rail is read left to right"] },
+
+  // ── Playfair ────────────────────────────────────────────────────────────────
+  { id:"d26", cipher:"Playfair", difficulty:"Hard", points:500, keyInfo:"Key: PLAYFAIR",
+    plaintext:"HIDE THE GOLD",         ciphertext:"BMNDZBXDKYBEJV",
+    hints:["Digraph cipher with 5×5 grid","Keyword fills the grid first","Key = PLAYFAIR"] },
+  { id:"d27", cipher:"Playfair", difficulty:"Hard", points:500, keyInfo:"Key: MONARCHY",
+    plaintext:"BALLOON",               ciphertext:"IBSUPMNA",
+    hints:["5×5 Playfair grid","Double letters are split with X","Key = MONARCHY"] },
+  { id:"d28", cipher:"Playfair", difficulty:"Hard", points:500, keyInfo:"Key: SECRET",
+    plaintext:"MEET ME LATER",         ciphertext:"OIQZOQNIKOB",
+    hints:["Digraph substitution cipher","I and J share a cell in the grid","Key = SECRET"] },
+
+  // ── Monoalphabetic ──────────────────────────────────────────────────────────
+  { id:"d29", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Key: QWERTY...",
+    plaintext:"THE ENEMY ADVANCES",    ciphertext:"ZIT TCTPA QBVQCMTS",
+    hints:["Each letter maps to exactly one other","Frequency analysis helps","A→Q, B→W, C→E..."] },
+  { id:"d30", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Key: ZEBRAS...",
     plaintext:"ATTACK AT DAWN",        ciphertext:"ZFFZPM ZF YZON",
     hints:["Keyword-based substitution","Keyword = ZEBRAS","Z→A, E→B, B→C..."] },
-  { id:"d14", cipher:"Caesar",         difficulty:"Easy",   points:100, keyInfo:"Shift: 1",
-    plaintext:"MEET ME AT NOON",       ciphertext:"NFFU NF BU OPPO",
-    hints:["Very small shift","Shift = 1","N→M, F→E..."] },
+  { id:"d31", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Atbash",
+    plaintext:"HELLO WORLD",           ciphertext:"SVOOL DLIOW",
+    hints:["Mirror substitution","A maps to Z, B to Y...","Atbash: reverse alphabet"] },
+  { id:"d32", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Atbash",
+    plaintext:"CRYPTOGRAPHY",          ciphertext:"XIBKGLTIZKSB",
+    hints:["Each letter is mirrored","A↔Z, B↔Y, C↔X...","Atbash cipher — reverse alphabet"] },
+  { id:"d33", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Key: DRAGON...",
+    plaintext:"VICTORY IS OURS",       ciphertext:"LKZQMHY KA MTHA",
+    hints:["Substitution cipher","Keyword starts with an animal","Key = DRAGON"] },
+
+  // ── Columnar Transposition ───────────────────────────────────────────────────
+  { id:"d34", cipher:"Columnar", difficulty:"Medium", points:300, keyInfo:"Key: CAT (3 cols)",
+    plaintext:"MEET ME TOMORROW",      ciphertext:"EEMOTEMTMROO WR",
+    hints:["Letters are rearranged by column order","3 columns used","Key = CAT, column order 1-3-2"] },
+  { id:"d35", cipher:"Columnar", difficulty:"Hard",   points:450, keyInfo:"Key: ZEBRA (5 cols)",
+    plaintext:"ATTACK AT DAWN",        ciphertext:"TAAADAKCTWTN",
+    hints:["Transposition cipher","5 columns, reordered by alphabetical key","Key = ZEBRA"] },
+
+  // ── Affine ──────────────────────────────────────────────────────────────────
+  { id:"d36", cipher:"Affine", difficulty:"Medium", points:300, keyInfo:"a=5, b=8",
+    plaintext:"AFFINE CIPHER",         ciphertext:"IHHWVC SWFRCP",
+    hints:["Formula: E(x) = (ax + b) mod 26","a and b are the keys","a=5, b=8"] },
+  { id:"d37", cipher:"Affine", difficulty:"Hard",   points:400, keyInfo:"a=7, b=3",
+    plaintext:"MATHEMATICS",           ciphertext:"DXQITDXQTLJ",
+    hints:["Affine cipher: E(x) = (ax+b) mod 26","a must be coprime with 26","a=7, b=3"] },
+
+  // ── Beaufort ─────────────────────────────────────────────────────────────────
+  { id:"d38", cipher:"Beaufort", difficulty:"Hard", points:450, keyInfo:"Key: NAVY",
+    plaintext:"OPEN FIRE",             ciphertext:"NDVE HBZS",
+    hints:["Similar to Vigenère but uses subtraction","E(x) = (key - plain) mod 26","Key = NAVY"] },
+  { id:"d39", cipher:"Beaufort", difficulty:"Hard", points:450, keyInfo:"Key: OCEAN",
+    plaintext:"STRIKE NOW",            ciphertext:"CMKBOS DJK",
+    hints:["Beaufort cipher — naval origin","Key letter minus plaintext letter","Key = OCEAN"] },
+
+  // ── ROT13 / ROT47 ────────────────────────────────────────────────────────────
+  { id:"d40", cipher:"ROT13", difficulty:"Easy", points:80, keyInfo:"Shift: 13",
+    plaintext:"HELLO",                 ciphertext:"URYYB",
+    hints:["Special case of Caesar","Shift = 13","Self-inverse: ROT13(ROT13(x)) = x"] },
+  { id:"d41", cipher:"ROT13", difficulty:"Easy", points:80, keyInfo:"Shift: 13",
+    plaintext:"SECRET MESSAGE",        ciphertext:"FRPERG ZRFFNTR",
+    hints:["ROT13 cipher","Each letter shifts by 13","Apply ROT13 again to decode"] },
+
+  // ── Mixed difficulty extras ──────────────────────────────────────────────────
+  { id:"d42", cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 5",
+    plaintext:"CODE BREAKER",          ciphertext:"HTIJ GWTFPJW",
+    hints:["Caesar cipher","Single digit shift","Shift = 5"] },
+  { id:"d43", cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 8",
+    plaintext:"DANGER AHEAD",          ciphertext:"LIVOMZ IPMIL",
+    hints:["Caesar cipher","Shift < 10","Shift = 8"] },
+  { id:"d44", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: WOLF",
+    plaintext:"HOWL AT THE MOON",      ciphertext:"DCKW WT XPM ACFF",
+    hints:["4-letter keyword","Animal keyword","Key = WOLF"] },
+  { id:"d45", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: FIRE",
+    plaintext:"BURN IT DOWN",          ciphertext:"GZIP WX HVAP",
+    hints:["4-letter keyword","Element keyword","Key = FIRE"] },
+  { id:"d46", cipher:"Rail Fence", difficulty:"Easy", points:100, keyInfo:"Rails: 2",
+    plaintext:"STRIKE FIRST",          ciphertext:"SIEFRTRKITS",
+    hints:["2-rail zigzag","Alternate odd and even positioned letters","Read top then bottom"] },
+  { id:"d47", cipher:"Caesar", difficulty:"Hard",   points:300, keyInfo:"Shift: 25",
+    plaintext:"YIELD TO NONE",         ciphertext:"XHDKC SN MNMD",
+    hints:["Almost full rotation","Shift = 25 or -1","Y→X, I→H, E→D..."] },
+  { id:"d48", cipher:"Vigenère", difficulty:"Hard",   points:400, keyInfo:"Key: PYTHON",
+    plaintext:"HACK THE SYSTEM",       ciphertext:"WOCZ FVM HLFXMZ",
+    hints:["6-letter keyword","Programming language keyword","Key = PYTHON"] },
+  { id:"d49", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"ROT5 digits",
+    plaintext:"ZERO ONE TWO",          ciphertext:"ETGF FET KBF",
+    hints:["Each letter has a unique mapping","Look for short words first","Z→E, E→T, R→G..."] },
+  { id:"d50", cipher:"Vigenère", difficulty:"Hard",   points:500, keyInfo:"Key: MATRIX",
+    plaintext:"FOLLOW THE WHITE RABBIT",ciphertext:"RZYBZD XPM DBGXM VEHZAL",
+    hints:["6-letter keyword","Famous movie keyword","Key = MATRIX"] },
+  { id:"d51", cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 2",
+    plaintext:"SPY GAME",              ciphertext:"URA ICOG",
+    hints:["Very small shift","Shift < 3","Shift = 2"] },
+  { id:"d52", cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 15",
+    plaintext:"LOCK AND KEY",          ciphertext:"ADLT PCR ZTN",
+    hints:["Medium shift","Shift > 12","Shift = 15"] },
+  { id:"d53", cipher:"Vigenère", difficulty:"Medium", points:250, keyInfo:"Key: MOON",
+    plaintext:"DARK SIDE",             ciphertext:"PORY WMLM",
+    hints:["4-letter keyword","Celestial body keyword","Key = MOON"] },
+  { id:"d54", cipher:"Rail Fence", difficulty:"Medium", points:250, keyInfo:"Rails: 3",
+    plaintext:"THE QUICK BROWN FOX",   ciphertext:"TCWNHUKRWOFEOIBX",
+    hints:["3-rail zigzag","Classic pangram","Read each rail top to bottom"] },
+  { id:"d55", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Key: CIPHER...",
+    plaintext:"BREAK THE ENIGMA",      ciphertext:"BSAWK TZW WLCPNK",
+    hints:["Keyword substitution","Keyword starts with a cryptography term","Key = CIPHER"] },
+  { id:"d56", cipher:"Caesar", difficulty:"Easy",   points:100, keyInfo:"Shift: 6",
+    plaintext:"FIND THE KEY",          ciphertext:"LOTJ ZNK QKE",
+    hints:["Caesar cipher","Shift < 8","Shift = 6"] },
+  { id:"d57", cipher:"Vigenère", difficulty:"Hard",   points:450, keyInfo:"Key: GHOST",
+    plaintext:"VANISH INTO THIN AIR",  ciphertext:"BCFZLN ZHBH ALHU AZF",
+    hints:["5-letter keyword","Spooky keyword","Key = GHOST"] },
+  { id:"d58", cipher:"Caesar", difficulty:"Medium", points:200, keyInfo:"Shift: 12",
+    plaintext:"HIDE YOUR TRACKS",      ciphertext:"TQPQ KAGd FDMOUA",
+    hints:["Medium shift","Shift > 10","Shift = 12"] },
+  { id:"d59", cipher:"Monoalphabetic", difficulty:"Hard", points:500, keyInfo:"Atbash",
+    plaintext:"THE DARK KNIGHT",       ciphertext:"GSV WZIP PMRTSG",
+    hints:["Mirror substitution","A↔Z B↔Y C↔X...","Atbash — decode by applying again"] },
+  { id:"d60", cipher:"Vigenère", difficulty:"Hard",   points:500, keyInfo:"Key: FALCON",
+    plaintext:"EXECUTE ORDER NOW",     ciphertext:"JXIYWXI SHEIV RBD",
+    hints:["6-letter keyword","Bird of prey keyword","Key = FALCON"] },
 ]
 
 function getDailyPuzzle(): Puzzle {
@@ -109,58 +267,88 @@ const DIFF = {
   Hard:   { badge:"bg-red-500/10 text-red-400 border-red-500/20",             text:"text-red-400"     },
 }
 
-// ─── Persistent timer hook (survives re-renders, resets only on startPuzzle) ──
+// ─── Persistent timer hook ────────────────────────────────────────────────────
+// Stores elapsed SECONDS in sessionStorage so it pauses on navigation.
+// Uses a single source of truth: startRef (wall-clock) + baseRef (saved seconds).
 function usePersistentTimer(key: string) {
-  const startRef = useRef<number | null>(null)
+  const baseRef  = useRef<number>(0)   // seconds saved before current session
+  const startRef = useRef<number | null>(null)  // Date.now() when current RAF started
   const rafRef   = useRef<number | undefined>(undefined)
-  // Initialise elapsed directly from sessionStorage so it never flashes 0 on remount
+
   const [elapsed, setElapsed] = useState(() => {
     if (typeof window === "undefined") return 0
-    const saved = sessionStorage.getItem(key)
-    if (!saved) return 0
-    return Math.floor((Date.now() - Number(saved)) / 1000)
+    return Number(sessionStorage.getItem(key) ?? 0)
   })
   const [active, setActive] = useState(() => {
     if (typeof window === "undefined") return false
-    return !!sessionStorage.getItem(key)
+    return Number(sessionStorage.getItem(key) ?? 0) > 0
   })
 
   const tick = useCallback(() => {
     if (startRef.current !== null) {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      // total = base seconds + seconds since RAF started
+      const total = baseRef.current + Math.floor((Date.now() - startRef.current) / 1000)
+      setElapsed(total)
       rafRef.current = requestAnimationFrame(tick)
     }
   }, [])
 
-  // Auto-resume on mount if a saved timestamp exists
+  // resumeRAF — resume from saved sessionStorage value, no wall-clock jump
+  const resumeRAF = useCallback(() => {
+    const saved = sessionStorage.getItem(key)
+    if (saved === null) return
+    baseRef.current  = Number(saved)
+    startRef.current = Date.now()
+    setElapsed(Number(saved))
+    cancelAnimationFrame(rafRef.current!)
+    rafRef.current = requestAnimationFrame(tick)
+  }, [key, tick])
+
+  // pauseRAF — freeze and persist current elapsed, stop RAF
+  const pauseRAF = useCallback(() => {
+    if (startRef.current !== null) {
+      const total = baseRef.current + Math.floor((Date.now() - startRef.current) / 1000)
+      baseRef.current = total
+      setElapsed(total)
+      sessionStorage.setItem(key, String(total))
+    }
+    cancelAnimationFrame(rafRef.current!)
+    startRef.current = null
+  }, [key])
+
+  // On mount: restore saved elapsed only — RAF started by screen effect
   useEffect(() => {
     const saved = sessionStorage.getItem(key)
-    if (saved) {
-      startRef.current = Number(saved)
-      setElapsed(Math.floor((Date.now() - Number(saved)) / 1000))
+    if (saved !== null) {
+      baseRef.current = Number(saved)
+      setElapsed(Number(saved))
       setActive(true)
-      cancelAnimationFrame(rafRef.current!)
-      rafRef.current = requestAnimationFrame(tick)
     }
-    return () => cancelAnimationFrame(rafRef.current!)
+    return () => {
+      cancelAnimationFrame(rafRef.current!)
+      startRef.current = null
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const start = useCallback(() => {
     const saved = sessionStorage.getItem(key)
-    if (saved) {
-      // Already running — just resume the RAF, never overwrite the timestamp
-      startRef.current = Number(saved)
-    } else {
-      startRef.current = Date.now()
-      sessionStorage.setItem(key, String(startRef.current))
-    }
+    const base  = saved !== null ? Number(saved) : 0
+    baseRef.current  = base
+    startRef.current = Date.now()
+    if (saved === null) sessionStorage.setItem(key, "0")
+    setElapsed(base)
     setActive(true)
     cancelAnimationFrame(rafRef.current!)
     rafRef.current = requestAnimationFrame(tick)
   }, [key, tick])
 
   const stop = useCallback(() => {
+    if (startRef.current !== null) {
+      const total = baseRef.current + Math.floor((Date.now() - startRef.current) / 1000)
+      baseRef.current = total
+      setElapsed(total)
+    }
     setActive(false)
     cancelAnimationFrame(rafRef.current!)
     sessionStorage.removeItem(key)
@@ -171,11 +359,12 @@ function usePersistentTimer(key: string) {
     cancelAnimationFrame(rafRef.current!)
     sessionStorage.removeItem(key)
     startRef.current = null
+    baseRef.current  = 0
     setActive(false)
     setElapsed(0)
   }, [key])
 
-  return { elapsed, active, start, stop, reset }
+  return { elapsed, active, start, stop, reset, resumeRAF, pauseRAF }
 }
 
 // ─── Countdown hook ────────────────────────────────────────────────────────────
@@ -190,6 +379,7 @@ type Screen = "lobby" | "playing" | "result"
 
 export default function ContestPage() {
   const { user, profile, signOut, refreshProfile } = useAuth()
+  const { setGameActive, requestLeave } = useGame()
   const [showAuth, setShowAuth]       = useState(false)
   const [authTab, setAuthTab]         = useState<"login"|"register">("login")
   const [screen, setScreen]           = useState<Screen>("lobby")
@@ -211,7 +401,7 @@ export default function ContestPage() {
 
   // ── Timer — persists across navigation ──────────────────────────────────────
   const timerKey = `cv_timer_${getTodayStr()}`
-  const { elapsed: seconds, start: startTimer, stop: stopTimer, reset: resetTimer } = usePersistentTimer(timerKey)
+  const { elapsed: seconds, start: startTimer, stop: stopTimer, reset: resetTimer, resumeRAF, pauseRAF } = usePersistentTimer(timerKey)
 
   // ── Load leaderboard ────────────────────────────────────────────────────────
   const loadBoard = useCallback(async () => {
@@ -228,6 +418,12 @@ export default function ContestPage() {
 
   useEffect(() => { loadBoard() }, [loadBoard])
 
+  // Always clear game lock on unmount
+  useEffect(() => {
+    return () => { setGameActive(false) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ── Check if user already played today ─────────────────────────────────────
   useEffect(() => {
     if (!user) return
@@ -238,8 +434,21 @@ export default function ContestPage() {
   // ── Restore screen state if timer is running (navigated away mid-game) ─────
   useEffect(() => {
     const saved = sessionStorage.getItem(timerKey)
-    if (saved) setScreen("playing")
+    if (saved) {
+      setScreen("playing")
+      setGameActive(true, "Daily Contest")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerKey])
+
+  // ── Start/stop RAF based on active screen ───────────────────────────────────
+  useEffect(() => {
+    if (screen === "playing") {
+      resumeRAF()
+    } else {
+      pauseRAF()
+    }
+  }, [screen, resumeRAF, pauseRAF])
 
   const startContest = () => {
     if (!user) { setAuthTab("login"); setShowAuth(true); return }
@@ -250,6 +459,7 @@ export default function ContestPage() {
     }
     setScreen("playing")
     startTimer() // call directly — no setTimeout delay
+    setGameActive(true, "Daily Contest")
   }
 
   const checkAnswer = () => {
@@ -261,7 +471,7 @@ export default function ContestPage() {
       setScore(s)
       setRatingDelta(delta)
       setScreen("result")
-      // Pass values directly — don't rely on state which may not be set yet
+      setGameActive(false)
       submitResult(s, delta)
     } else {
       setWrong(true); setShake(true)
@@ -270,21 +480,25 @@ export default function ContestPage() {
   }
 
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Hard-cap: if submitting is still true after 12s, force-reset it
+  const submittingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const submitResult = async (finalScore: number, finalDelta: number) => {
-    if (!user || !profile || submitting) {
-      console.warn("submitResult blocked — user:", !!user, "profile:", !!profile, "submitting:", submitting)
+    // If user/profile not ready yet, show retry instead of silent hang
+    if (!user || !profile) {
+      setSaveError("Not signed in — please log in and retry.")
       return
     }
+    if (submitting) return
     setSaveError(null)
     setSubmitting(true)
 
-    // Helper: wrap any promise with a timeout
-    const withTimeout = <T,>(promise: Promise<T>, ms = 8000): Promise<T> =>
-      Promise.race([
-        promise,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms))
-      ])
+    // Safety net: always unblock spinner after 12s no matter what
+    clearTimeout(submittingTimerRef.current)
+    submittingTimerRef.current = setTimeout(() => {
+      setSubmitting(false)
+      setSaveError("Request timed out. Check your connection and retry.")
+    }, 12000)
 
     try {
       const today        = getTodayStr()
@@ -294,61 +508,44 @@ export default function ContestPage() {
       const yStr         = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,"0")}-${String(yesterday.getDate()).padStart(2,"0")}`
       const newStreak    = profile.last_played === yStr ? profile.streak + 1 : 1
 
-      console.log("Inserting entry…", { user_id: user.id, score: finalScore, ratingAfter })
+      const { error: insertErr } = await supabase.from("contest_entries").insert({
+        user_id:       user.id,
+        username:      profile.username,
+        puzzle_date:   today,
+        puzzle_id:     puzzle.id,
+        score:         finalScore,
+        time_seconds:  seconds,
+        hints_used:    hintsRevealed,
+        difficulty:    puzzle.difficulty,
+        rating_before: ratingBefore,
+        rating_after:  ratingAfter,
+      })
 
-      const { error: insertErr } = await withTimeout(
-        Promise.resolve(supabase.from("contest_entries").insert({
-          user_id:       user.id,
-          username:      profile.username,
-          puzzle_date:   today,
-          puzzle_id:     puzzle.id,
-          score:         finalScore,
-          time_seconds:  seconds,
-          hints_used:    hintsRevealed,
-          difficulty:    puzzle.difficulty,
-          rating_before: ratingBefore,
-          rating_after:  ratingAfter,
-        }))
-      )
-
-      if (insertErr) {
-        // 23505 = already submitted today — treat as success
-        if (insertErr.code === "23505") {
-          console.log("Already submitted today — skipping insert")
-        } else {
-          console.error("INSERT ERROR:", insertErr)
-          setSaveError(`${insertErr.message} [${insertErr.code}]`)
-          return
-        }
-      } else {
-        console.log("Insert OK")
+      if (insertErr && insertErr.code !== "23505") {
+        setSaveError(`${insertErr.message} [${insertErr.code}]`)
+        return
       }
 
-      const { error: updateErr } = await withTimeout(
-        Promise.resolve(supabase.from("profiles").update({
-          rating:          ratingAfter,
-          contests_played: profile.contests_played + 1,
-          best_score:      Math.max(profile.best_score, finalScore),
-          streak:          newStreak,
-          last_played:     today,
-        }).eq("id", user.id))
-      )
+      const { error: updateErr } = await supabase.from("profiles").update({
+        rating:          ratingAfter,
+        contests_played: profile.contests_played + 1,
+        best_score:      Math.max(profile.best_score, finalScore),
+        streak:          newStreak,
+        last_played:     today,
+      }).eq("id", user.id)
 
       if (updateErr) {
-        console.error("UPDATE ERROR:", updateErr)
         setSaveError(`${updateErr.message} [${updateErr.code}]`)
         return
       }
-      console.log("Update OK")
 
-      await withTimeout(refreshProfile())
-      await withTimeout(loadBoard())
+      await Promise.allSettled([refreshProfile(), loadBoard()])
       setAlreadyPlayed(true)
       setSubmitted(true)
     } catch (e: any) {
-      console.error("submitResult exception:", e)
       setSaveError(e?.message ?? "Unknown error — check console")
     } finally {
+      clearTimeout(submittingTimerRef.current)
       setSubmitting(false)
     }
   }
@@ -469,7 +666,7 @@ export default function ContestPage() {
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 {[
                   { label:"Played",  val: profile.contests_played },
-                  { label:"Streak",  val: `${profile.streak}🔥` },
+                  { label:"Streak",  val: profile.streak > 1 ? `${profile.streak} 🔥` : `—` },
                   { label:"Best",    val: profile.best_score },
                 ].map(({ label, val }) => (
                   <div key={label} className="bg-gray-900/40 rounded-lg py-2">
@@ -586,7 +783,7 @@ export default function ContestPage() {
                     <span className={`text-[12px] font-bold ${tier.color}`}>{e.rating}</span>
                     <span className="text-[12px] text-emerald-400">{e.best_score}</span>
                     <span className="text-[11px] text-gray-500">{e.contests_played}</span>
-                    <span className="text-[11px] text-white">{e.streak}🔥</span>
+                    <span className="text-[11px] text-white">{e.streak > 1 ? `${e.streak}🔥` : e.streak}</span>
                   </div>
                 )
               })}
@@ -601,7 +798,7 @@ export default function ContestPage() {
   if (screen === "playing") return (
     <div className="p-8 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <button onClick={() => setScreen("lobby")}
+        <button onClick={() => { setGameActive(false); setScreen("lobby") }}
           className="flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-300 transition-colors">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -736,7 +933,12 @@ export default function ContestPage() {
           </div>
         </div>
 
-        {submitting ? (
+        {/* Save status */}
+        {!user ? (
+          <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-4 mb-4 flex items-center gap-3">
+            <span className="text-gray-500 text-[12px]">🔒 Sign in to save your score to the leaderboard.</span>
+          </div>
+        ) : submitting ? (
           <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-4 mb-4 flex items-center gap-3">
             <svg className="animate-spin w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10"/>

@@ -147,7 +147,7 @@ export default function ProfilePage() {
           { label: "Avg Time",    value: avgTime ? formatTime(avgTime) : "—", color: "text-violet-400" },
           { label: "No-Hint ✓",  value: noHintSolves,            color: "text-amber-400"    },
           { label: "Hard Solved", value: hardSolves,              color: "text-red-400"      },
-          { label: "Streak",      value: `${profile.streak}🔥`,  color: "text-orange-400"   },
+          { label: "Streak",      value: profile.streak > 1 ? `${profile.streak} 🔥` : "—",  color: profile.streak > 1 ? "text-orange-400" : "text-gray-500"   },
           { label: "Last Played", value: profile.last_played ?? "—", color: "text-gray-400" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-[#0d0d0d] border border-gray-800/60 rounded-xl p-4 text-center">

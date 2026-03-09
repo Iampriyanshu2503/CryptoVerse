@@ -1,0 +1,336 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useAuth } from "@/lib/AuthContext"
+import AuthModal from "@/components/AuthModal"
+
+// ── Coin system ───────────────────────────────────────────────────────────────
+function getCoins(): number {
+  try { return Number(localStorage.getItem("cv_coins") ?? "0") } catch { return 0 }
+}
+function addCoins(n: number) {
+  const c = getCoins() + n
+  localStorage.setItem("cv_coins", String(c))
+  return c
+}
+function spendCoins(n: number): boolean {
+  const c = getCoins()
+  if (c < n) return false
+  localStorage.setItem("cv_coins", String(c - n))
+  return true
+}
+
+// ── Owned hints ───────────────────────────────────────────────────────────────
+interface OwnedHint { id: string; name: string; uses: number; purchasedAt: string }
+function getOwned(): OwnedHint[] {
+  try { return JSON.parse(localStorage.getItem("cv_owned_hints") ?? "[]") } catch { return [] }
+}
+function saveOwned(items: OwnedHint[]) {
+  localStorage.setItem("cv_owned_hints", JSON.stringify(items))
+}
+
+// ── Transaction history ───────────────────────────────────────────────────────
+interface Tx { label: string; amount: number; date: string }
+function getTxHistory(): Tx[] {
+  try { return JSON.parse(localStorage.getItem("cv_tx_history") ?? "[]") } catch { return [] }
+}
+function addTx(tx: Tx) {
+  const h = getTxHistory()
+  h.unshift(tx)
+  localStorage.setItem("cv_tx_history", JSON.stringify(h.slice(0, 20)))
+}
+
+// ── Shop items ────────────────────────────────────────────────────────────────
+const SHOP_ITEMS = [
+  {
+    id: "hint_skip",      name: "Skip Pass",       cost: 50,  uses: 3,  icon: "⏭",
+    desc: "Skip a puzzle without losing points. Use in Challenge or Contest.",
+    color: "blue",
+  },
+  {
+    id: "hint_reveal",    name: "Letter Reveal",    cost: 75,  uses: 3,  icon: "🔍",
+    desc: "Reveals the first letter of the plaintext answer.",
+    color: "violet",
+  },
+  {
+    id: "hint_cipher",    name: "Cipher ID",        cost: 40,  uses: 5,  icon: "🏷",
+    desc: "Tells you the exact cipher type used in the puzzle.",
+    color: "amber",
+  },
+  {
+    id: "hint_freeze",    name: "Time Freeze",      cost: 100, uses: 2,  icon: "❄️",
+    desc: "Pauses the contest timer for 15 seconds. Use wisely.",
+    color: "cyan",
+  },
+  {
+    id: "hint_key",       name: "Key Fragment",     cost: 120, uses: 2,  icon: "🗝",
+    desc: "Reveals part of the cipher key (e.g. Shift = ? or Key starts with...).",
+    color: "emerald",
+  },
+  {
+    id: "hint_freq",      name: "Frequency Map",    cost: 60,  uses: 4,  icon: "📊",
+    desc: "Shows letter frequency analysis of the ciphertext to aid decryption.",
+    color: "pink",
+  },
+  {
+    id: "hint_double",    name: "Double Points",    cost: 200, uses: 1,  icon: "✨",
+    desc: "Your next solved puzzle awards double rating points.",
+    color: "red",
+  },
+  {
+    id: "hint_shield",    name: "Wrong Shield",     cost: 80,  uses: 3,  icon: "🛡",
+    desc: "One wrong answer won't count against you. Blocks one penalty.",
+    color: "orange",
+  },
+]
+
+// ── Earning ways ──────────────────────────────────────────────────────────────
+const EARN_WAYS = [
+  { icon: "🏆", label: "Win Daily Contest",       coins: 200 },
+  { icon: "⚡", label: "Speed Round — 10+ solved", coins: 100 },
+  { icon: "🔥", label: "7-Day Streak",             coins: 150 },
+  { icon: "🎯", label: "Solve Hard puzzle",         coins: 75  },
+  { icon: "📚", label: "Complete all Easy puzzles", coins: 50  },
+  { icon: "🌟", label: "First solve of the day",    coins: 25  },
+]
+
+const COLOR_MAP: Record<string, string> = {
+  blue:   "border-blue-500/30 bg-blue-500/5",
+  violet: "border-violet-500/30 bg-violet-500/5",
+  amber:  "border-amber-500/30 bg-amber-500/5",
+  cyan:   "border-cyan-500/30 bg-cyan-500/5",
+  emerald:"border-emerald-500/30 bg-emerald-500/5",
+  pink:   "border-pink-500/30 bg-pink-500/5",
+  red:    "border-red-500/30 bg-red-500/5",
+  orange: "border-orange-500/30 bg-orange-500/5",
+}
+const TEXT_MAP: Record<string, string> = {
+  blue:   "text-blue-400",   violet: "text-violet-400",
+  amber:  "text-amber-400",  cyan:   "text-cyan-400",
+  emerald:"text-emerald-400",pink:   "text-pink-400",
+  red:    "text-red-400",    orange: "text-orange-400",
+}
+
+export default function MarketplacePage() {
+  const { user, profile } = useAuth()
+  const [showAuth,  setShowAuth]  = useState(false)
+  const [coins,     setCoins]     = useState(0)
+  const [owned,     setOwned]     = useState<OwnedHint[]>([])
+  const [history,   setHistory]   = useState<Tx[]>([])
+  const [tab,       setTab]       = useState<"shop"|"inventory"|"earn">("shop")
+  const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
+
+  useEffect(() => {
+    setCoins(getCoins()); setOwned(getOwned()); setHistory(getTxHistory())
+  }, [])
+
+  const showToast = (msg: string, ok: boolean) => {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const handleBuy = (item: typeof SHOP_ITEMS[0]) => {
+    if (!user) { setShowAuth(true); return }
+    if (!spendCoins(item.cost)) { showToast("Not enough coins!", false); return }
+    const existing = owned.find(o => o.id === item.id)
+    let updated: OwnedHint[]
+    if (existing) {
+      updated = owned.map(o => o.id === item.id ? { ...o, uses: o.uses + item.uses } : o)
+    } else {
+      updated = [...owned, { id: item.id, name: item.name, uses: item.uses, purchasedAt: new Date().toLocaleDateString() }]
+    }
+    saveOwned(updated)
+    setOwned(updated)
+    const newCoins = getCoins()
+    setCoins(newCoins)
+    addTx({ label: `Bought ${item.name}`, amount: -item.cost, date: new Date().toLocaleDateString() })
+    setHistory(getTxHistory())
+    showToast(`${item.name} added to inventory!`, true)
+  }
+
+  // Dev: add coins for testing
+  const handleEarnDemo = (amount: number) => {
+    const c = addCoins(amount)
+    setCoins(c)
+    addTx({ label: `Earned coins`, amount, date: new Date().toLocaleDateString() })
+    setHistory(getTxHistory())
+    showToast(`+${amount} coins earned!`, true)
+  }
+
+  return (
+    <div className="p-8 max-w-4xl mx-auto">
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} defaultTab="login" />}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl text-[13px] font-semibold"
+          style={{
+            background: toast.ok ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)",
+            border: `1px solid ${toast.ok ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)"}`,
+            color: toast.ok ? "#34d399" : "#f87171",
+            animation: "cv-in 0.3s ease",
+          }}>
+          <style>{`@keyframes cv-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+          {toast.ok ? "✓" : "✕"} {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-white tracking-tight mb-1">Hint Marketplace</h1>
+          <p className="text-[13px] text-gray-500">Spend coins on power-ups to help crack tough ciphers.</p>
+        </div>
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5">
+          <span className="text-xl">🪙</span>
+          <div>
+            <p className="text-[18px] font-black text-amber-400 leading-none">{coins}</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest">Coins</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-gray-900/60 border border-gray-800/60 rounded-xl mb-6">
+        {(["shop", "inventory", "earn"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className="flex-1 py-2 rounded-[9px] text-[11px] font-bold uppercase tracking-widest transition-all duration-200"
+            style={{ background: tab === t ? "#1d4ed8" : "transparent", color: tab === t ? "#fff" : "#4b5563" }}>
+            {t === "shop" ? "🛒 Shop" : t === "inventory" ? "🎒 Inventory" : "💰 Earn"}
+          </button>
+        ))}
+      </div>
+
+      {/* Shop */}
+      {tab === "shop" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {SHOP_ITEMS.map(item => (
+            <div key={item.id}
+              className={`border rounded-2xl p-5 flex flex-col gap-3 ${COLOR_MAP[item.color]}`}>
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{item.icon}</span>
+                  <div>
+                    <p className={`text-[14px] font-bold ${TEXT_MAP[item.color]}`}>{item.name}</p>
+                    <p className="text-[10px] text-gray-600">{item.uses} uses per purchase</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1">
+                  <span className="text-[12px]">🪙</span>
+                  <span className="text-[13px] font-black text-amber-400">{item.cost}</span>
+                </div>
+              </div>
+              <p className="text-[12px] text-gray-500 leading-relaxed">{item.desc}</p>
+              <button onClick={() => handleBuy(item)}
+                disabled={coins < item.cost}
+                className="w-full py-2.5 rounded-xl text-[12px] font-bold transition-all duration-200"
+                style={{
+                  background: coins >= item.cost ? "rgba(29,78,216,0.3)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${coins >= item.cost ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.07)"}`,
+                  color: coins >= item.cost ? "#60a5fa" : "#374151",
+                  cursor: coins >= item.cost ? "pointer" : "not-allowed",
+                }}>
+                {coins >= item.cost ? `Buy — 🪙 ${item.cost}` : `Need ${item.cost - coins} more coins`}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Inventory */}
+      {tab === "inventory" && (
+        <div>
+          {owned.length === 0 ? (
+            <div className="text-center py-16 text-gray-600">
+              <p className="text-4xl mb-3">🎒</p>
+              <p className="text-[14px]">Your inventory is empty.</p>
+              <p className="text-[12px] mt-1">Buy items from the Shop to get started.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {owned.map(item => {
+                const shopItem = SHOP_ITEMS.find(s => s.id === item.id)
+                return (
+                  <div key={item.id} className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-3xl">{shopItem?.icon ?? "📦"}</span>
+                      <div>
+                        <p className="text-[14px] font-bold text-white">{item.name}</p>
+                        <p className="text-[11px] text-gray-600">Purchased {item.purchasedAt}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-[12px] text-gray-500">{item.uses} uses remaining</span>
+                      <div className="flex gap-1">
+                        {Array.from({ length: Math.min(item.uses, 5) }).map((_, i) => (
+                          <div key={i} className="w-2 h-2 rounded-full bg-emerald-500" />
+                        ))}
+                        {item.uses > 5 && <span className="text-[10px] text-gray-600">+{item.uses - 5}</span>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Transaction history */}
+          {history.length > 0 && (
+            <div className="mt-6">
+              <p className="text-[12px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Transaction History</p>
+              <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl divide-y divide-gray-800/60">
+                {history.slice(0, 8).map((tx, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-3">
+                    <span className="text-[13px] text-gray-400">{tx.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[13px] font-bold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {tx.amount > 0 ? "+" : ""}{tx.amount}
+                      </span>
+                      <span className="text-[12px]">🪙</span>
+                      <span className="text-[10px] text-gray-700 ml-2">{tx.date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Earn */}
+      {tab === "earn" && (
+        <div>
+          <p className="text-[13px] text-gray-500 mb-5">Complete these activities to earn coins:</p>
+          <div className="space-y-3 mb-8">
+            {EARN_WAYS.map(way => (
+              <div key={way.label} className="flex items-center justify-between bg-gray-900/60 border border-gray-800/60 rounded-xl px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{way.icon}</span>
+                  <span className="text-[13px] text-white">{way.label}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[14px] font-black text-amber-400">+{way.coins}</span>
+                  <span className="text-[13px]">🪙</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Dev: test earn button */}
+          <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5">
+            <p className="text-[12px] font-semibold text-white mb-1">🧪 Test Earn Coins</p>
+            <p className="text-[11px] text-gray-600 mb-4">Add coins to test the marketplace (dev mode).</p>
+            <div className="flex gap-2 flex-wrap">
+              {[25, 50, 100, 200].map(amt => (
+                <button key={amt} onClick={() => handleEarnDemo(amt)}
+                  className="px-4 py-2 rounded-xl text-[12px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-colors">
+                  +{amt} 🪙
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

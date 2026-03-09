@@ -1,9 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/AuthContext"
+import { useGame } from "@/lib/GameContext"
 
 const TIERS = [
   { name:"Novice",       min:0,    color:"text-gray-400",   icon:"🔰" },
@@ -19,35 +21,64 @@ const navItems = [
   {
     group: "Algorithms",
     items: [
-      { label: "Classical Ciphers", href: "/classical",  tag: null,
+      { label: "Classical Ciphers", href: "/classical",   tag: null,
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M7.5 4.5v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
-      { label: "Symmetric Key",     href: "/symmetric",  tag: null,
+      { label: "Symmetric Key",     href: "/symmetric",   tag: null,
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M5.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm0 0h4m0 0v1.5m0-1.5V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
-      { label: "Hashing",           href: "/hashing",    tag: null,
+      { label: "Hashing",           href: "/hashing",     tag: null,
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 5h9M3 10h9M6 2.5v10M9 2.5v10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
-      { label: "Asymmetric",        href: "/asymmetric", tag: "New",
+      { label: "Asymmetric",        href: "/asymmetric",  tag: "New",
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 7.5h3m6 0h-3m0-3v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="3" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/><circle cx="12" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/></svg> },
     ],
   },
   {
     group: "Practice",
     items: [
-      { label: "Cipher Challenge",  href: "/challenge",  tag: "🏆",
+      { label: "Cipher Challenge",  href: "/challenge",   tag: "🏆",
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm0 3.5v4m0 1.5v.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
-      { label: "Daily Contest",     href: "/contest",    tag: "🔴",
+      { label: "Daily Contest",     href: "/contest",     tag: "🔴",
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1l1.8 3.6L13 5.3l-2.75 2.7.65 3.8L7.5 10l-3.4 1.8.65-3.8L2 5.3l3.7-.7z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/></svg> },
+      { label: "Speed Round",       href: "/speed",       tag: "⚡",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M8.5 1.5L3 8.5h5.5l-2 5 6.5-7H7.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+      { label: "Cipher Battle",     href: "/battle",      tag: "⚔️",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 2l11 11M13 2L2 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
+    ],
+  },
+  {
+    group: "Rewards",
+    items: [
+      { label: "Hint Marketplace",  href: "/marketplace", tag: "🪙",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M7.5 4v1.5m0 4V11m-2-3.5h3.5a1 1 0 0 0 0-2h-3a1 1 0 0 1 0-2H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
     ],
   },
   {
     group: "Analysis",
     items: [
-      { label: "Dashboard",         href: "/dashboard",  tag: null,
+      { label: "Dashboard",         href: "/dashboard",   tag: null,
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 11L5.5 7l3 2.5L12 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
     ],
   },
 ]
 
 function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: () => void }) {
+  const { requestLeave, isGameActive } = useGame()
+  const router = useRouter()
+
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (pathname === href) return
+    if (isGameActive) {
+      e.preventDefault()
+      requestLeave().then((confirmed) => {
+        if (confirmed) {
+          onNavClick?.()
+          router.push(href)
+        }
+      })
+    } else {
+      onNavClick?.()
+    }
+  }
+
   return (
     <nav className="flex-1 px-2 py-4 space-y-5 overflow-y-auto">
       {navItems.map(({ group, items }) => (
@@ -58,7 +89,7 @@ function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: (
               const active = pathname === href || pathname.startsWith(href + "/")
               return (
                 <li key={href}>
-                  <Link href={href} onClick={onNavClick}
+                  <Link href={href} onClick={(e) => handleNavClick(e, href)}
                     className={`group flex items-center justify-between px-2 py-1.5 rounded-md text-[13px] transition-all duration-150 ${
                       active ? "bg-gray-800/80 text-white" : "text-gray-500 hover:text-gray-200 hover:bg-gray-800/40"
                     }`}>
@@ -69,8 +100,13 @@ function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: (
                       {label}
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {tag === "New" && <span className="text-[9px] font-bold tracking-wider bg-blue-600/20 text-blue-400 border border-blue-600/30 px-1.5 py-0.5 rounded">New</span>}
+                      {tag === "New" && (
+                        <span className="text-[9px] font-bold tracking-wider bg-blue-600/20 text-blue-400 border border-blue-600/30 px-1.5 py-0.5 rounded">New</span>
+                      )}
                       {tag === "🏆" && <span className="text-[11px]">🏆</span>}
+                      {tag === "⚡" && <span className="text-[11px]">⚡</span>}
+                      {tag === "⚔️" && <span className="text-[11px]">⚔️</span>}
+                      {tag === "🪙" && <span className="text-[11px]">🪙</span>}
                       {tag === "🔴" && (
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />

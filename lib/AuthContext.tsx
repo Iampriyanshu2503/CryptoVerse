@@ -33,12 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Keep a ref to the current user so callbacks always see the latest value
-  // without needing to be re-created whenever user changes.
   const userRef = useRef<User | null>(null)
   userRef.current = user
 
-  // ── fetchProfile: stable reference, takes uid explicitly ──────────────────
+  // ── fetchProfile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async (uid: string) => {
     try {
       const { data, error } = await supabase
@@ -46,12 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select("*")
         .eq("id", uid)
         .single()
-
       if (error) {
-        // PGRST116 = row not found — profile may not be created yet (trigger delay)
-        if (error.code !== "PGRST116") {
-          console.error("fetchProfile error:", error.message)
-        }
+        if (error.code !== "PGRST116") console.error("fetchProfile error:", error.message)
         setProfile(null)
       } else {
         setProfile(data as Profile)
@@ -62,56 +56,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // ── Bootstrap session on mount ─────────────────────────────────────────────
+  // ── Bootstrap session on mount ────────────────────────────────────────────
   useEffect(() => {
     let mounted = true
+    let initialized = false
 
-    const init = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-
-        if (!mounted) return
-
-        if (error) {
-          console.error("getSession error:", error.message)
-          setLoading(false)
-          return
-        }
-
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        }
-      } catch (err) {
-        console.error("init error:", err)
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-
-    init()
-
-    // ── Listen for auth changes ──────────────────────────────────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, sess) => {
         if (!mounted) return
-
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          // Small delay on SIGNED_IN to let the DB trigger create the profile
-          if (event === "SIGNED_IN") {
-            await new Promise(r => setTimeout(r, 500))
-          }
-          await fetchProfile(session.user.id)
-        } else {
+        if (event === "SIGNED_OUT" && !initialized) return
+        initialized = true
+        setSession(sess)
+        setUser(sess?.user ?? null)
+        if (sess?.user) {
+          if (event === "SIGNED_IN") await new Promise(r => setTimeout(r, 400))
+          await fetchProfile(sess.user.id)
+        } else if (event === "SIGNED_OUT") {
           setProfile(null)
         }
       }
     )
+
+    const init = async () => {
+      try {
+        const { data: { session: sess }, error } = await supabase.auth.getSession()
+        if (!mounted) return
+        if (error) { console.error("getSession error:", error.message); return }
+        setSession(sess)
+        setUser(sess?.user ?? null)
+        if (sess?.user) await fetchProfile(sess.user.id)
+      } catch (err) {
+        console.error("init error:", err)
+      } finally {
+        if (mounted) setLoading(false)
+        initialized = true
+      }
+    }
+
+    init()
 
     return () => {
       mounted = false
@@ -120,8 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile])
 
   // ── signUp ────────────────────────────────────────────────────────────────
-  // Calls our /api/auth/register route which uses the service role key
-  // to create + immediately confirm the user — no email verification needed.
   const signUp = useCallback(
     async (email: string, password: string, username: string): Promise<string | null> => {
       try {
@@ -132,8 +112,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         const json = await res.json()
         if (!res.ok) return json.error ?? "Registration failed"
-
-        // Account is confirmed — sign in immediately
         const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
         return signInErr?.message ?? null
       } catch (err: any) {
@@ -158,11 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── signOut ───────────────────────────────────────────────────────────────
   const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut()
-    } catch (err) {
-      console.error("signOut error:", err)
-    }
+    try { await supabase.auth.signOut() } catch (err) { console.error("signOut error:", err) }
     setUser(null)
     setProfile(null)
     setSession(null)
@@ -175,9 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile])
 
   return (
-    <AuthContext.Provider
-      value={{ user, profile, session, loading, signUp, signIn, signOut, refreshProfile }}
-    >
+    <AuthContext.Provider value={{ user, profile, session, loading, signUp, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

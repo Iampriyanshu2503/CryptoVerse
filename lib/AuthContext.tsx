@@ -125,7 +125,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       try {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out. Check your connection.")), 10000)
+        )
+        const auth = supabase.auth.signInWithPassword({ email, password })
+        const { error } = await Promise.race([auth, timeout])
         return error?.message ?? null
       } catch (err: any) {
         return err?.message ?? "An unexpected error occurred"

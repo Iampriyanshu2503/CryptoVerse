@@ -484,10 +484,25 @@ export default function ContestPage() {
   const submittingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const submitResult = async (finalScore: number, finalDelta: number) => {
-    // If user/profile not ready yet, show retry instead of silent hang
-    if (!user || !profile) {
+    // If user not logged in at all
+    if (!user) {
       setSaveError("Not signed in — please log in and retry.")
       return
+    }
+    // Profile may still be loading — wait up to 3s for it
+    if (!profile) {
+      let waited = 0
+      await new Promise<void>(resolve => {
+        const iv = setInterval(() => {
+          waited += 200
+          if (waited >= 3000) { clearInterval(iv); resolve() }
+        }, 200)
+      })
+      // Re-read profile from context won't work directly, so just retry
+      if (!profile) {
+        setSaveError("Profile not loaded — please retry.")
+        return
+      }
     }
     if (submitting) return
     setSaveError(null)

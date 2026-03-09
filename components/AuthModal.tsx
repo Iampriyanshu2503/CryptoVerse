@@ -241,6 +241,11 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
     setErrs({}); setSuccess(""); setUnconfirmed(false); setResendSuccess(false)
     if (!validate()) { shake(); return }
     setLoading(true)
+    // Safety net — never stay stuck on loading more than 12s
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+      setErrs({ global: "Request timed out. Please try again." })
+    }, 12000)
     try {
       if (tab === "login") {
         const rawErr = await signIn(email, password)
@@ -258,11 +263,14 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
       } else {
         const err = await signUp(email, password, username.trim())
         if (err) { setErrs({ global: err }); shake() }
-        else { setSuccess("Account created! Check your inbox and click the confirmation link, then sign in."); switchTab("login"); setEmail(""); setPassword("") }
+        else { onClose() } // signed in automatically — just close
       }
     } catch (e: any) {
       setErrs({ global: e?.message ?? "Something went wrong." }); shake()
-    } finally { setLoading(false) }
+    } finally {
+      clearTimeout(safetyTimer)
+      setLoading(false)
+    }
   }
 
   const handleResend = async () => {

@@ -42,6 +42,10 @@ export default function BattlePage() {
   const { user, profile } = useAuth()
   const [showAuth,  setShowAuth]  = useState(false)
   const [status,    setStatus]    = useState<BattleStatus>("idle")
+  const [copied,    setCopied]    = useState(false)
+  const [joinErr,   setJoinErr]   = useState<string | null>(null)
+  const [createErr, setCreateErr] = useState<string | null>(null)
+  const [creating,  setCreating]  = useState(false)
   const [roomId,    setRoomId]    = useState<string | null>(null)
   const [room,      setRoom]      = useState<Room | null>(null)
   const [answer,    setAnswer]    = useState("")
@@ -98,39 +102,67 @@ export default function BattlePage() {
   // ── Create room ─────────────────────────────────────────────────────────────
   const createRoom = async () => {
     if (!user || !profile) { setShowAuth(true); return }
-    const seed = Math.floor(Math.random() * BATTLE_PUZZLES.length)
-    const { data, error } = await supabase.from("battle_rooms").insert({
-      puzzle_seed: seed,
-      player1:     profile.username,
-      player2:     null,
-      p1_done:     false, p2_done: false,
-      p1_time:     null,  p2_time: null,
-      winner:      null,
-    }).select().single()
+    setCreateErr(null)
+    setCreating(true)
+    try {
+      const seed = Math.floor(Math.random() * BATTLE_PUZZLES.length)
 
-    if (error || !data) return
-    setRoom(data as Room); setRoomId(data.id); setStatus("waiting")
+      const { data, error } = await supabase.from("battle_rooms").insert({
+        puzzle_seed: seed,
+        player1:     profile.username,
+        player2:     null,
+        p1_done:     false, p2_done: false,
+        p1_time:     null,  p2_time: null,
+        winner:      null,
+      }).select().single()
+
+      if (error) { setCreateErr(`${error.message} [${error.code}]`); return }
+      if (!data)  { setCreateErr("No data returned — check Supabase setup."); return }
+      setRoom(data as Room); setRoomId(data.id); setStatus("waiting")
+    } catch (e: any) {
+      setCreateErr(e?.message ?? "Unknown error")
+    } finally {
+      setCreating(false)
+    }
   }
 
   // ── Join room ───────────────────────────────────────────────────────────────
   const [joinCode, setJoinCode] = useState("")
+  const [showSql,  setShowSql]  = useState(false)
+  const [joining,  setJoining]  = useState(false)
+
   const joinRoom = async () => {
     if (!user || !profile) { setShowAuth(true); return }
-    const { data, error } = await supabase
-      .from("battle_rooms")
-      .update({ player2: profile.username })
-      .eq("id", joinCode.trim())
-      .is("player2", null)
-      .select().single()
+    const code = joinCode.trim().toUpperCase().replace(/-/g, "")
+    setJoinErr(null)
+    if (code.length < 6) { setJoinErr("Please enter a valid room code."); return }
+    setJoining(true)
+    try {
+      const { data: rows, error: findErr } = await supabase
+        .from("battle_rooms").select("*").is("player2", null)
+        .order("created_at", { ascending: false }).limit(50)
+      if (findErr) { setJoinErr(`Error: ${findErr.message}`); return }
+      const target = (rows ?? []).find((r: any) =>
+        r.id.replace(/-/g, "").toUpperCase().startsWith(code)
+      )
+      if (!target) { setJoinErr("Room not found or already full."); return }
 
-    if (error || !data) { alert("Room not found or already full."); return }
-    setRoom(data as Room); setRoomId(data.id)
-    setStatus("playing")
-    startRef.current = Date.now()
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
-    }, 1000)
-    setTimeout(() => inputRef.current?.focus(), 100)
+      const { data, error } = await supabase
+        .from("battle_rooms").update({ player2: profile.username })
+        .eq("id", target.id).is("player2", null).select().single()
+      if (error || !data) { setJoinErr(error?.message ?? "Failed to join room."); return }
+      setRoom(data as Room); setRoomId(data.id)
+      setStatus("playing")
+      startRef.current = Date.now()
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }, 1000)
+      setTimeout(() => inputRef.current?.focus(), 100)
+    } catch (e: any) {
+      setJoinErr(e?.message ?? "Unknown error")
+    } finally {
+      setJoining(false)
+    }
   }
 
   // ── Submit answer ───────────────────────────────────────────────────────────
@@ -201,7 +233,10 @@ grant all on public.battle_rooms to authenticated, anon;`
             ⚔️ 1v1 Live
           </span>
         </div>
-        <p className="text-[13px] text-gray-500">Race a friend to decrypt the same cipher. Fastest correct answer wins.</p>
+        <div className="flex items-center gap-3">
+          <p className="text-[13px] text-gray-500">Race a friend to decrypt the same cipher. Fastest correct answer wins.</p>
+          <button onClick={() => setShowSql(v => !v)} className="text-[10px] text-gray-700 hover:text-gray-500 border border-gray-800 px-2 py-1 rounded-lg transition-colors shrink-0">⚙️ Setup</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-8">
@@ -209,9 +244,12 @@ grant all on public.battle_rooms to authenticated, anon;`
           <div className="text-3xl mb-2">⚔️</div>
           <p className="text-[14px] font-bold text-white mb-1">Create Room</p>
           <p className="text-[11px] text-gray-600 mb-4">Get a room code to share with a friend</p>
-          <button onClick={createRoom}
-            className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors">
-            Create Battle
+          {createErr && <p className="text-[11px] text-red-400 mb-2 text-center break-all">{createErr}</p>}
+          <button onClick={createRoom} disabled={creating}
+            className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors flex items-center justify-center gap-2">
+            {creating ? (
+              <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="white" strokeWidth="2" strokeDasharray="20 10"/></svg>Creating...</>
+            ) : "Create Battle"}
           </button>
         </div>
 
@@ -222,18 +260,28 @@ grant all on public.battle_rooms to authenticated, anon;`
           <input value={joinCode} onChange={e => setJoinCode(e.target.value)}
             placeholder="Room code..."
             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-[12px] font-mono text-white placeholder-gray-700 outline-none focus:border-blue-500/60 mb-2" />
-          <button onClick={joinRoom}
-            className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
-            Join Battle
+          {joinErr && (
+            <p className="text-[11px] text-red-400 mb-2 text-center">{joinErr}</p>
+          )}
+          <button onClick={joinRoom} disabled={joining}
+            className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors flex items-center justify-center gap-2">
+            {joining ? (
+              <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="white" strokeWidth="2" strokeDasharray="20 10"/></svg>Joining...</>
+            ) : "Join Battle"}
           </button>
         </div>
       </div>
 
-      <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5">
-        <p className="text-[12px] font-semibold text-amber-400 mb-2">⚙️ Requires Supabase Setup</p>
-        <p className="text-[11px] text-gray-500 mb-3">Run this SQL in your Supabase SQL Editor to enable battles:</p>
-        <pre className="bg-gray-950 rounded-xl p-3 text-[10px] font-mono text-gray-400 overflow-x-auto whitespace-pre-wrap">{SQL_NOTE}</pre>
-      </div>
+      {showSql && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[12px] font-semibold text-amber-400">⚙️ Supabase Setup (first time only)</p>
+            <button onClick={() => setShowSql(false)} className="text-gray-600 hover:text-gray-400 text-[11px] transition-colors">✕ dismiss</button>
+          </div>
+          <p className="text-[11px] text-gray-500 mb-3">Run this SQL once in your Supabase SQL Editor:</p>
+          <pre className="bg-gray-950 rounded-xl p-3 text-[10px] font-mono text-gray-400 overflow-x-auto whitespace-pre-wrap">{SQL_NOTE}</pre>
+        </div>
+      )}
     </div>
   )
 
@@ -243,9 +291,14 @@ grant all on public.battle_rooms to authenticated, anon;`
       <h2 className="text-xl font-bold text-white mb-2">Waiting for opponent...</h2>
       <p className="text-[13px] text-gray-500 mb-6">Share this room code with your friend:</p>
       <div className="bg-gray-900/80 border border-blue-500/30 rounded-2xl px-6 py-4 mb-6 flex items-center justify-between">
-        <span className="font-mono text-[20px] font-black text-blue-400 tracking-widest">{roomId?.slice(0, 8).toUpperCase()}</span>
-        <button onClick={() => navigator.clipboard.writeText(roomId ?? "")}
-          className="text-[11px] text-gray-600 hover:text-white transition-colors">Copy</button>
+        <span className="font-mono text-[20px] font-black text-blue-400 tracking-widest">{roomId?.replace(/-/g,"").slice(0, 8).toUpperCase()}</span>
+        <button onClick={() => {
+            navigator.clipboard.writeText(roomId?.replace(/-/g,"").slice(0, 8).toUpperCase() ?? "")
+            setCopied(true); setTimeout(() => setCopied(false), 2000)
+          }}
+          className={`text-[11px] transition-colors font-medium ${copied ? "text-emerald-400" : "text-gray-600 hover:text-white"}`}>
+          {copied ? "✓ Copied!" : "Copy"}
+        </button>
       </div>
       <button onClick={cleanup} className="text-[12px] text-gray-600 hover:text-red-400 transition-colors">Cancel</button>
     </div>

@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext"
-import { addCoins } from "@/lib/inventory"
+import { addCoins, getCoins, getOwned } from "@/lib/inventory"
+import { checkAndUnlock, buildStats } from "@/lib/achievements"
+import { triggerAchievementToast } from "@/components/AchievementToast"
 import { useGame } from "@/lib/GameContext"
 import AuthModal from "@/components/AuthModal"
 
@@ -67,7 +69,9 @@ function loadHighScores(): HighScore[] {
   try { return JSON.parse(localStorage.getItem("cv_speed_hs") ?? "[]") } catch { return [] }
 }
 function saveHighScore(entry: HighScore) {
+  if (entry.solved <= 0) return          // never save 0-solved games
   const list = loadHighScores()
+    .filter(h => !(h.username === entry.username && h.date === entry.date)) // remove same-day dupe
   list.push(entry)
   list.sort((a, b) => b.solved - a.solved)
   localStorage.setItem("cv_speed_hs", JSON.stringify(list.slice(0, 10)))
@@ -103,6 +107,7 @@ export default function SpeedRoundPage() {
   const [idx,      setIdx]      = useState(0)
   const [answer,   setAnswer]   = useState("")
   const [solved,   setSolved]   = useState(0)
+  const solvedRef = useRef(0)
   const [skipped,  setSkipped]  = useState(0)
   const [wrong,    setWrong]    = useState(false)
   const [shake,    setShake]    = useState(false)
@@ -115,7 +120,10 @@ export default function SpeedRoundPage() {
   const timerRef  = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
-    setHighScores(loadHighScores())
+    // One-time: purge any 0-solved entries from old bug
+    const cleaned = loadHighScores().filter(h => h.solved > 0)
+    try { localStorage.setItem("cv_high_scores", JSON.stringify(cleaned)) } catch {}
+    setHighScores(cleaned)
   }, [])
 
   const endGame = useCallback((finalSolved: number) => {
@@ -124,7 +132,7 @@ export default function SpeedRoundPage() {
     setGameActive(false)
     const s = updateStreak()
     setStreak(s)
-    if (user || profile) {
+    if ((user || profile) && finalSolved > 0) {
       saveHighScore({
         username: profile?.username ?? "Anonymous",
         solved:   finalSolved,
@@ -139,12 +147,37 @@ export default function SpeedRoundPage() {
       if (finalSolved >= 15) earned += 150
       addCoins(earned)
     } catch {}
+
+    // Save speed best + check achievements
+    try {
+      const prevBest = Number(localStorage.getItem("cv_speed_best") ?? "0")
+      const newBest  = Math.max(prevBest, finalSolved)
+      const rounds   = Number(localStorage.getItem("cv_speed_rounds") ?? "0") + 1
+      localStorage.setItem("cv_speed_best", String(newBest))
+      localStorage.setItem("cv_speed_rounds", String(rounds))
+
+      const bWins   = Number(localStorage.getItem("cv_battle_wins") ?? "0")
+      const bPlayed = Number(localStorage.getItem("cv_battle_played") ?? "0")
+      const stats = buildStats({
+        contests_played:   profile?.contests_played ?? 0,
+        rating:            profile?.rating ?? 1000,
+        streak:            profile?.streak ?? 0,
+        speedBestSolved:   newBest,
+        speedRoundsPlayed: rounds,
+        battleWins:        bWins,
+        battlePlayed:      bPlayed,
+        coins:             getCoins(),
+        itemsBought:       getOwned().length,
+      })
+      const newAch = checkAndUnlock(stats)
+      newAch.forEach(a => triggerAchievementToast(a))
+    } catch {}
   }, [user, profile])
 
   const startGame = () => {
     if (!user) { setShowAuth(true); return }
     const p = shuffle(SPEED_PUZZLES)
-    setPuzzles(p); setIdx(0); setAnswer(""); setSolved(0)
+    setPuzzles(p); setIdx(0); setAnswer(""); setSolved(0); solvedRef.current = 0
     setSkipped(0); setTimeLeft(DURATION); setShowHint(false); setHintsUsed(0)
     setPhase("playing")
     setGameActive(true, "Speed Round")
@@ -152,7 +185,7 @@ export default function SpeedRoundPage() {
     timerRef.current = setInterval(() => {
       t--
       setTimeLeft(t)
-      if (t <= 0) endGame(solved)
+      if (t <= 0) endGame(solvedRef.current)
     }, 1000)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -180,6 +213,7 @@ export default function SpeedRoundPage() {
   const nextPuzzle = useCallback((didSolve: boolean) => {
     setSolved(s => {
       const next = didSolve ? s + 1 : s
+      solvedRef.current = next
       if (idx + 1 >= puzzles.length) { endGame(next); return next }
       return next
     })

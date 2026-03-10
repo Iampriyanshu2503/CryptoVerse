@@ -6,6 +6,7 @@ import PageTransition from "@/components/PageTransition"
 import { AuthProvider } from "@/lib/AuthContext"
 import { GameProvider } from "@/lib/GameContext"
 import BootOverlay from "@/components/BootOverlay"
+import AchievementToastWrapper from "@/components/AchievementToastWrapper"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <GameProvider>
             {/* Boot overlay — client component, covers everything via fixed positioning */}
             <BootOverlay />
+            <AchievementToastWrapper />
 
             {/* App shell — given an id so BootOverlay can control its opacity via DOM */}
             <div id="app-shell" className="flex h-screen overflow-hidden">

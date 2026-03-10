@@ -11,7 +11,8 @@ export function setCoinsVal(n: number) {
   try {
     localStorage.setItem("cv_coins", String(Math.max(0, n)))
     // Notify same-tab listeners (storage event only fires cross-tab)
-    window.dispatchEvent(new CustomEvent("cv_coins_changed", { detail: Math.max(0, n) }))
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("cv_coins_changed", { detail: Math.max(0, n) }))
   } catch {}
 }
 export function spendCoins(n: number): boolean {

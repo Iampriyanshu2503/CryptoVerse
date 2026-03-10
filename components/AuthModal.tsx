@@ -604,14 +604,21 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
     setErrs({}); setSuccess(""); setUnconfirmed(false); setResendSuccess(false)
     if (!validate()) { shake(); return }
     setLoading(true)
+
+    // Safety net — 30s covers Supabase free-tier cold starts from India
+    let timedOut = false
     const safetyTimer = setTimeout(() => {
+      timedOut = true
       setLoading(false)
-      setErrs({ global: "Request timed out. Please try again." })
-    }, 12000)
+      setErrs({ global: "Supabase is waking up (free tier cold start). Please try again in a few seconds." })
+    }, 30000)
+
     try {
       if (tab === "login") {
         const rawErr = await signIn(email, password)
-        if (!rawErr) { onClose(); return }
+        if (timedOut) return
+        clearTimeout(safetyTimer)
+        if (!rawErr) { setLoading(false); onClose(); return }
         const isUnconfirmed = /confirm|verified|not confirmed/i.test(rawErr)
         if (isUnconfirmed) {
           setUnconfirmed(true)
@@ -624,14 +631,17 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
         shake()
       } else {
         const err = await signUp(email, password, username.trim())
+        if (timedOut) return
+        clearTimeout(safetyTimer)
         if (err) { setErrs({ global: err }); shake() }
-        else { onClose() }
+        else { setLoading(false); onClose() }
       }
     } catch (e: any) {
+      if (timedOut) return
+      clearTimeout(safetyTimer)
       setErrs({ global: e?.message ?? "Something went wrong." }); shake()
     } finally {
-      clearTimeout(safetyTimer)
-      setLoading(false)
+      if (!timedOut) setLoading(false)
     }
   }
 

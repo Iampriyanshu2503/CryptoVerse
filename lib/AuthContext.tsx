@@ -42,20 +42,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── fetchProfile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async (uid: string) => {
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", uid)
-        .single()
+      // Race the DB call against a 8s timeout — handles Supabase free-tier cold starts
+      const dbCall = supabase.from("profiles").select("*").eq("id", uid).single()
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 8000)
+      )
+      const { data, error } = await Promise.race([dbCall, timeoutPromise]) as Awaited<typeof dbCall>
       if (error) {
         if (error.code !== "PGRST116") console.error("fetchProfile error:", error.message)
         setProfile(null)
       } else {
         setProfile(data as Profile)
+        // Cache for instant re-hydration on next login
+        try { localStorage.setItem("cv_profile_cache", JSON.stringify(data)) } catch {}
       }
-    } catch (err) {
-      console.error("fetchProfile unexpected error:", err)
-      setProfile(null)
+    } catch (err: any) {
+      if (err?.message !== "timeout") console.error("fetchProfile error:", err)
+      // On timeout — try loading from cache so UI isn't blank
+      try {
+        const cached = localStorage.getItem("cv_profile_cache")
+        if (cached) setProfile(JSON.parse(cached))
+      } catch {}
     }
   }, [])
 
@@ -72,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(sess)
         setUser(sess?.user ?? null)
         if (sess?.user) {
-          if (event === "SIGNED_IN") await new Promise(r => setTimeout(r, 400))
           await fetchProfile(sess.user.id)
         } else if (event === "SIGNED_OUT") {
           setProfile(null)
@@ -128,6 +134,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       try {
+        // Show cached profile instantly while auth + DB load in background
+        try {
+          const cached = localStorage.getItem("cv_profile_cache")
+          if (cached) setProfile(JSON.parse(cached))
+        } catch {}
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         return error?.message ?? null
       } catch (err: any) {
@@ -143,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setProfile(null)
     setSession(null)
+    try { localStorage.removeItem("cv_profile_cache") } catch {}
     // Force full reload so all page state is cleared
     if (typeof window !== "undefined") window.location.href = "/"
   }, [])

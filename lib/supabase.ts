@@ -42,6 +42,16 @@ export interface Profile {
   streak:          number
   last_played:     string | null
   created_at:      string
+  // Extended profile fields
+  avatar_url:      string | null
+  bio:             string | null
+  location:        string | null
+  website:         string | null
+  github:          string | null
+  linkedin:        string | null
+  twitter:         string | null
+  discord:         string | null
+  display_name:    string | null
 }
 
 export interface ContestEntry {

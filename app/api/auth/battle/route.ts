@@ -57,6 +57,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ room: data })
     }
 
+    // ── Submit answer (update p1/p2 done + time) ──────────────────────────────
+    if (body.action === "submit") {
+      const { roomId, update } = body
+      if (!roomId) return NextResponse.json({ error: "Missing roomId" }, { status: 400 })
+      const { error } = await admin.from("battle_rooms").update(update).eq("id", roomId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Set winner ─────────────────────────────────────────────────────────────
+    if (body.action === "winner") {
+      const { roomId, winner } = body
+      if (!roomId) return NextResponse.json({ error: "Missing roomId" }, { status: 400 })
+      const { error } = await admin.from("battle_rooms").update({ winner }).eq("id", roomId)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 })

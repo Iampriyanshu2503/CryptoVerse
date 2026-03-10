@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/AuthContext"
 import { useGame } from "@/lib/GameContext"
 import { supabase, type LeaderboardRow, type AllTimeRow } from "@/lib/supabase"
 import { getOwned, useItem, hasItem, ITEM, addCoins, getCoins, setCoinsVal } from "@/lib/inventory"
+import { checkAndUnlock, buildStats, getUnlocked } from "@/lib/achievements"
+import { triggerAchievementToast } from "@/components/AchievementToast"
 import AuthModal from "@/components/AuthModal"
 
 // ─── Puzzle pool ───────────────────────────────────────────────────────────────
@@ -553,6 +555,7 @@ export default function ContestPage() {
         else if (newStreak >= 3) earned += 50
         addCoins(earned)  // dispatches cv_coins_changed event
         setCoinsEarned(earned)
+
       } catch {}
 
       submitResult(s, delta)
@@ -672,6 +675,31 @@ export default function ContestPage() {
       setSubmitted(true)
       // Sync with DB in background
       Promise.allSettled([refreshProfile(), loadBoard(true)])
+
+      // ── Achievement check ─────────────────────────────────────────────────
+      try {
+        const { data: ents } = await supabase
+          .from("contest_entries").select("hints_used,difficulty,score,time_seconds").eq("user_id", user.id)
+        const rows = ents ?? []
+        const stats = buildStats({
+          contests_played: profile.contests_played + 1,
+          best_score:      Math.max(profile.best_score, finalScore),
+          rating:          ratingAfter,
+          streak:          newStreak,
+          noHintSolves:    rows.filter((e:any) => e.hints_used === 0).length,
+          hardSolves:      rows.filter((e:any) => e.difficulty === "Hard").length,
+          bestTime:        rows.length ? Math.min(...rows.map((e:any) => e.time_seconds)) : 0,
+          perfectScores:   rows.filter((e:any) => e.score >= 950).length,
+          speedBestSolved: Number(localStorage.getItem("cv_speed_best")       ?? "0"),
+          battleWins:      Number(localStorage.getItem("cv_battle_wins")      ?? "0"),
+          battlePlayed:    Number(localStorage.getItem("cv_battle_played")    ?? "0"),
+          challengeSolved: Number(localStorage.getItem("cv_challenge_solved") ?? "0"),
+          challengeHard:   Number(localStorage.getItem("cv_challenge_hard")   ?? "0"),
+          coins:           getCoins(),
+          itemsBought:     getOwned().length,
+        })
+        checkAndUnlock(stats).forEach(a => triggerAchievementToast(a))
+      } catch {}
 
       // coins awarded in checkAnswer above
     } catch (e: any) {

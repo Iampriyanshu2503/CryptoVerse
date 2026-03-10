@@ -97,6 +97,21 @@ export default function MarketplacePage() {
     setHistory(getTxHistory())
   }
 
+  // On mount: if profile has higher coins from another device, sync down
+  useEffect(() => {
+    if (profile && typeof (profile as any).coins === "number") {
+      const dbCoins   = (profile as any).coins as number
+      const dbInv     = (profile as any).inventory as OwnedHint[] | undefined
+      const localCoins = getCoins()
+      if (dbCoins > localCoins) {
+        try { localStorage.setItem("cv_coins", String(dbCoins)) } catch {}
+      }
+      if (dbInv && Array.isArray(dbInv) && dbInv.length > getOwned().length) {
+        try { localStorage.setItem("cv_owned_hints", JSON.stringify(dbInv)) } catch {}
+      }
+    }
+  }, [profile])
+
   useEffect(() => {
     syncFromStorage()
     window.addEventListener("focus", syncFromStorage)
@@ -117,21 +132,46 @@ export default function MarketplacePage() {
 
   const handleBuy = (item: typeof SHOP_ITEMS[0]) => {
     if (!user) { setShowAuth(true); return }
-    if (!spendCoins(item.cost)) { showToast("Not enough coins!", false); return }
-    const existing = owned.find(o => o.id === item.id)
+
+    // Always re-read fresh coins from localStorage (never trust stale state)
+    const freshCoins = getCoins()
+    if (freshCoins < item.cost) {
+      setCoins(freshCoins) // sync state
+      showToast(`Not enough coins! You have 🪙${freshCoins}`, false)
+      return
+    }
+
+    const success = spendCoins(item.cost)
+    if (!success) { showToast("Purchase failed — try again", false); return }
+
+    // Update inventory
+    const currentOwned = getOwned() // fresh read
+    const existing = currentOwned.find(o => o.id === item.id)
     let updated: OwnedHint[]
     if (existing) {
-      updated = owned.map(o => o.id === item.id ? { ...o, uses: o.uses + item.uses } : o)
+      updated = currentOwned.map(o => o.id === item.id ? { ...o, uses: o.uses + item.uses } : o)
     } else {
-      updated = [...owned, { id: item.id, name: item.name, uses: item.uses, purchasedAt: new Date().toLocaleDateString() }]
+      updated = [...currentOwned, { id: item.id, name: item.name, uses: item.uses, purchasedAt: new Date().toLocaleDateString() }]
     }
     saveOwned(updated)
     setOwned(updated)
-    const newCoins = getCoins()
-    setCoins(newCoins)
+    setCoins(getCoins())
     addTx({ label: `Bought ${item.name}`, amount: -item.cost, date: new Date().toLocaleDateString() })
     setHistory(getTxHistory())
-    showToast(`${item.name} added to inventory!`, true)
+    showToast(`✓ ${item.name} added to inventory! (${item.uses} uses)`, true)
+
+    // Sync to DB in background (non-blocking)
+    if (user?.id) {
+      fetch("/api/auth/coins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id:   user.id,
+          coins:     getCoins(),
+          inventory: getOwned(),
+        }),
+      }).catch(() => {}) // silent fail — localStorage is source of truth
+    }
   }
 
   const handleUse = (item: OwnedHint) => {
@@ -215,17 +255,21 @@ export default function MarketplacePage() {
                 </div>
               </div>
               <p className="text-[12px] text-gray-500 leading-relaxed">{item.desc}</p>
-              <button onClick={() => handleBuy(item)}
-                disabled={coins < item.cost}
-                className="w-full py-2.5 rounded-xl text-[12px] font-bold transition-all duration-200"
-                style={{
-                  background: coins >= item.cost ? "rgba(29,78,216,0.3)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${coins >= item.cost ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.07)"}`,
-                  color: coins >= item.cost ? "#60a5fa" : "#374151",
-                  cursor: coins >= item.cost ? "pointer" : "not-allowed",
-                }}>
-                {coins >= item.cost ? `Buy — 🪙 ${item.cost}` : `Need ${item.cost - coins} more coins`}
-              </button>
+              {(() => {
+                const canBuy = coins >= item.cost
+                return (
+                  <button onClick={() => handleBuy(item)}
+                    className="w-full py-2.5 rounded-xl text-[12px] font-bold transition-all duration-200 active:scale-95"
+                    style={{
+                      background: canBuy ? "rgba(29,78,216,0.5)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${canBuy ? "rgba(59,130,246,0.6)" : "rgba(255,255,255,0.07)"}`,
+                      color: canBuy ? "#93c5fd" : "#374151",
+                      cursor: "pointer",
+                    }}>
+                    {canBuy ? `Buy — 🪙 ${item.cost}` : `Need ${item.cost - coins} more coins`}
+                  </button>
+                )
+              })()}
             </div>
           ))}
         </div>

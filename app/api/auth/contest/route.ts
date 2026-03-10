@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
       score, time_seconds, hints_used, difficulty,
       rating_before, rating_after, contests_played,
       best_score, streak, last_played,
+      coins, inventory,
     } = await req.json()
 
     if (!user_id || !username) {
@@ -31,14 +32,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertErr.message, code: insertErr.code }, { status: 500 })
     }
 
-    // Update profile
-    const { error: updateErr } = await admin.from("profiles").update({
+    // Update profile (include coins + inventory if provided)
+    const updatePayload: Record<string, any> = {
       rating:          rating_after,
       contests_played: contests_played,
       best_score:      best_score,
       streak:          streak,
       last_played:     last_played,
-    }).eq("id", user_id)
+    }
+    if (typeof coins === "number")  updatePayload.coins     = coins
+    if (inventory !== undefined)    updatePayload.inventory = inventory
+
+    const { error: updateErr } = await admin.from("profiles").update(updatePayload).eq("id", user_id)
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message, code: updateErr.code }, { status: 500 })

@@ -1,684 +1,408 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect } from "react"
+import { ACHIEVEMENTS, RARITY, getUnlocked, checkAndUnlock, buildStats } from "@/lib/achievements"
 import { useAuth } from "@/lib/AuthContext"
+import { supabase, type ContestEntry } from "@/lib/supabase"
 import AuthModal from "@/components/AuthModal"
-import { addCoins } from "@/lib/inventory"
-
-// ── Puzzle Data ────────────────────────────────────────────────────────────────
-interface Puzzle {
-  id: string
-  cipher: string
-  plaintext: string
-  ciphertext: string
-  hint1: string
-  hint2: string
-  hint3: string
-  difficulty: "Easy" | "Medium" | "Hard"
-  keyInfo: string
-}
-
-const PUZZLES: Puzzle[] = [
-  // ── Easy: Caesar ──────────────────────────────────────────────────────────
-  { id:"e1", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"HELLO WORLD", ciphertext:"KHOOR ZRUOG", keyInfo:"Shift: 3",
-    hint1:"This cipher shifts each letter by the same fixed amount.",
-    hint2:"The shift value is between 1 and 5.",
-    hint3:"Shift = 3. K→H, H→E, L→L, L→I, O→O" },
-  { id:"e2", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"CRYPTOGRAPHY", ciphertext:"FUBSWRJUDSKB", keyInfo:"Shift: 3",
-    hint1:"Caesar cipher — each letter shifted by a fixed amount.",
-    hint2:"Try brute forcing all 26 shifts.",
-    hint3:"Shift = 3. F→C, U→R, B→Y..." },
-  { id:"e3", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"THE QUICK BROWN FOX", ciphertext:"QEB NRFZH YOLTK CLU", keyInfo:"Shift: 23",
-    hint1:"Caesar cipher with an unusual shift direction.",
-    hint2:"The shift wraps around — try shift 23 or -3.",
-    hint3:"Shift = 23 (or -3). Q→T, E→H, B→E..." },
-  { id:"e4", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"KEEP IT SECRET", ciphertext:"OIIT MX WIGVIX", keyInfo:"Shift: 4",
-    hint1:"Single-digit shift.", hint2:"Shift between 3–6.",
-    hint3:"Shift = 4. O→K, I→E, I→E..." },
-  { id:"e5", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"SPY GAME", ciphertext:"URA ICOG", keyInfo:"Shift: 2",
-    hint1:"Very small shift.", hint2:"Shift < 3.",
-    hint3:"Shift = 2. U→S, R→P, A→Y..." },
-  { id:"e6", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"FIND THE KEY", ciphertext:"LOTJ ZNK QKE", keyInfo:"Shift: 6",
-    hint1:"Caesar cipher.", hint2:"Shift < 8.",
-    hint3:"Shift = 6. L→F, O→I, T→N..." },
-  { id:"e7", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"NEVER GIVE UP", ciphertext:"ARIRE TVIR HC", keyInfo:"Shift: 13",
-    hint1:"ROT-13 is a special case of Caesar.", hint2:"Shift = 13.",
-    hint3:"Self-inverse: apply ROT13 again to decode." },
-  { id:"e8", cipher:"ROT13", difficulty:"Easy",
-    plaintext:"SECRET MESSAGE", ciphertext:"FRPERG ZRFFNTR", keyInfo:"Shift: 13",
-    hint1:"ROT13 cipher.", hint2:"Each letter shifts by exactly 13.",
-    hint3:"Apply ROT13 again to decode — it's self-inverse." },
-  { id:"e9", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"CODE BREAKER", ciphertext:"HTIJ GWTFPJW", keyInfo:"Shift: 5",
-    hint1:"Caesar cipher.", hint2:"Single digit shift.",
-    hint3:"Shift = 5. H→C, T→O, I→D..." },
-  { id:"e10", cipher:"Caesar", difficulty:"Easy",
-    plaintext:"MEET ME AT NOON", ciphertext:"NFFU NF BU OPPO", keyInfo:"Shift: 1",
-    hint1:"Smallest possible shift.", hint2:"Shift = 1.",
-    hint3:"N→M, F→E, U→T..." },
-
-  // ── Easy: Rail Fence ──────────────────────────────────────────────────────
-  { id:"e11", cipher:"Rail Fence", difficulty:"Easy",
-    plaintext:"HELLO WORLD", ciphertext:"HLOOLELWRD", keyInfo:"Rails: 2",
-    hint1:"Letters are rearranged in a zigzag pattern, not substituted.",
-    hint2:"2 rails — alternate letters go on each rail.",
-    hint3:"Top rail: H,L,O,W,R,D — Bottom rail: E,L,O,L. Read top then bottom." },
-  { id:"e12", cipher:"Rail Fence", difficulty:"Easy",
-    plaintext:"STRIKE FIRST", ciphertext:"SIEFRTRKITS", keyInfo:"Rails: 2",
-    hint1:"2-rail zigzag.", hint2:"Odd-positioned letters on top, even on bottom.",
-    hint3:"Read top rail then bottom rail." },
-
-  // ── Medium: Vigenère ─────────────────────────────────────────────────────
-  { id:"m1", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"ATTACK AT DAWN", ciphertext:"LXFOPV EF RNHR", keyInfo:"Key: LEMON",
-    hint1:"This cipher uses a repeating keyword, not a fixed shift.",
-    hint2:"The keyword is a common fruit with 5 letters.",
-    hint3:"Key = LEMON. A+L=L, T+E=X, T+M=F..." },
-  { id:"m2", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"SEND REINFORCEMENTS", ciphertext:"AMLX KOBVAXKMOXBAP", keyInfo:"Key: HAL",
-    hint1:"Vigenère — each letter uses a different shift from a repeating key.",
-    hint2:"Short 3-letter key.",
-    hint3:"Key = HAL. S+H=A, E+A=F, N+L=Z..." },
-  { id:"m3", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"HIDE AND SEEK", ciphertext:"JMLG CPF UGGM", keyInfo:"Key: CAT",
-    hint1:"Short repeating keyword.", hint2:"3-letter animal keyword.",
-    hint3:"Key = CAT. H+C=J, I+A=J, D+T=W..." },
-  { id:"m4", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"WINTER IS COMING", ciphertext:"XMPXIW MW GOQQVO", keyInfo:"Key: BEAM",
-    hint1:"4-letter keyword.", hint2:"Repeating key.",
-    hint3:"Key = BEAM. W+B=X, I+E=M, N+A=N..." },
-  { id:"m5", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"HOWL AT THE MOON", ciphertext:"DCKW WT XPM ACFF", keyInfo:"Key: WOLF",
-    hint1:"4-letter keyword.", hint2:"Animal-themed key.",
-    hint3:"Key = WOLF. H+W=D, O+O=C, W+L=H..." },
-  { id:"m6", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"DARK SIDE", ciphertext:"PORY WMLM", keyInfo:"Key: MOON",
-    hint1:"4-letter celestial keyword.", hint2:"Key = MOON.",
-    hint3:"D+M=P, A+O=O, R+O=F..." },
-  { id:"m7", cipher:"Vigenère", difficulty:"Medium",
-    plaintext:"BURN IT DOWN", ciphertext:"GZIP WX HVAP", keyInfo:"Key: FIRE",
-    hint1:"4-letter element keyword.", hint2:"Key = FIRE.",
-    hint3:"B+F=G, U+I=C, R+R=I..." },
-
-  // ── Medium: Rail Fence ───────────────────────────────────────────────────
-  { id:"m8", cipher:"Rail Fence", difficulty:"Medium",
-    plaintext:"WE ARE DISCOVERED FLEE AT ONCE", ciphertext:"WECRLTEERDSOEEFEAABORADICVNE", keyInfo:"Rails: 3",
-    hint1:"This cipher rearranges letters in a zigzag pattern.",
-    hint2:"Imagine writing the text diagonally across 3 rows.",
-    hint3:"3 rails. Read each rail top to bottom." },
-  { id:"m9", cipher:"Rail Fence", difficulty:"Medium",
-    plaintext:"THE QUICK BROWN FOX", ciphertext:"TCWNHUKRWOFEOIBX", keyInfo:"Rails: 3",
-    hint1:"Rail fence with 3 rails.", hint2:"Classic pangram — all letters used.",
-    hint3:"Read rail 1, then rail 2, then rail 3." },
-  { id:"m10", cipher:"Rail Fence", difficulty:"Medium",
-    plaintext:"MEET AT MIDNIGHT", ciphertext:"MAMTMDETETIIGH", keyInfo:"Rails: 4",
-    hint1:"4-rail zigzag.", hint2:"More rails = wider zigzag pattern.",
-    hint3:"Read each of the 4 rails left to right, top to bottom." },
-
-  // ── Medium: Caesar (harder shifts) ──────────────────────────────────────
-  { id:"m11", cipher:"Caesar", difficulty:"Medium",
-    plaintext:"DEFEND THE CASTLE", ciphertext:"WXOXWM MAX VTLMAX", keyInfo:"Shift: 19",
-    hint1:"Large shift value.", hint2:"Shift > 15.",
-    hint3:"Shift = 19. W→D, X→E, O→D..." },
-  { id:"m12", cipher:"Caesar", difficulty:"Medium",
-    plaintext:"TRUST NO ONE", ciphertext:"OMJNO IJ JIZ", keyInfo:"Shift: 21",
-    hint1:"Shift near end of alphabet.", hint2:"Shift > 18.",
-    hint3:"Shift = 21. O→T, M→R, J→O..." },
-  { id:"m13", cipher:"Caesar", difficulty:"Medium",
-    plaintext:"SOUND THE ALARM", ciphertext:"JLFEU KYV RCRIT", keyInfo:"Shift: 17",
-    hint1:"Caesar cipher.", hint2:"Shift > 14.",
-    hint3:"Shift = 17. J→S, L→O, F→U..." },
-  { id:"m14", cipher:"Caesar", difficulty:"Medium",
-    plaintext:"LOCK AND KEY", ciphertext:"ADLT PCR ZTN", keyInfo:"Shift: 15",
-    hint1:"Medium shift.", hint2:"Shift > 12.",
-    hint3:"Shift = 15. A→L, D→O, L→A..." },
-
-  // ── Hard: Playfair ───────────────────────────────────────────────────────
-  { id:"h1", cipher:"Playfair", difficulty:"Hard",
-    plaintext:"HIDE THE GOLD", ciphertext:"BMNDZBXDKYBEJV", keyInfo:"Key: PLAYFAIR",
-    hint1:"This cipher encrypts pairs of letters using a 5×5 grid.",
-    hint2:"The keyword fills the grid first, remaining letters follow.",
-    hint3:"Key = PLAYFAIR. Each digraph follows row/col/box rules." },
-  { id:"h2", cipher:"Playfair", difficulty:"Hard",
-    plaintext:"BALLOON", ciphertext:"IBSUPMNA", keyInfo:"Key: MONARCHY",
-    hint1:"5×5 Playfair grid.", hint2:"Double letters are split with X.",
-    hint3:"Key = MONARCHY. BA·LX·LO·ON after padding." },
-  { id:"h3", cipher:"Playfair", difficulty:"Hard",
-    plaintext:"MEET ME LATER", ciphertext:"OIQZOQNIKOB", keyInfo:"Key: SECRET",
-    hint1:"Digraph substitution cipher.", hint2:"I and J share a cell in the grid.",
-    hint3:"Key = SECRET. ME·ET·ME·LA·TE·R as digraphs." },
-
-  // ── Hard: Vigenère ───────────────────────────────────────────────────────
-  { id:"h4", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"RENDEZVOUS AT MIDNIGHT", ciphertext:"LIVSTQCWI LD QSMHRMKOD", keyInfo:"Key: CRYPTOS",
-    hint1:"Polyalphabetic substitution with a long keyword.",
-    hint2:"The key length is 7 characters.",
-    hint3:"Key = CRYPTOS. Index of Coincidence ≈ 0.065" },
-  { id:"h5", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"HACK THE SYSTEM", ciphertext:"WOCZ FVM HLFXMZ", keyInfo:"Key: PYTHON",
-    hint1:"6-letter keyword.", hint2:"Programming language keyword.",
-    hint3:"Key = PYTHON. H+P=W, A+Y=Z, C+T=V..." },
-  { id:"h6", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"EXECUTE ORDER NOW", ciphertext:"JXIYWXI SHEIV RBD", keyInfo:"Key: FALCON",
-    hint1:"6-letter keyword.", hint2:"Bird of prey keyword.",
-    hint3:"Key = FALCON. E+F=J, X+A=X, E+L=P..." },
-  { id:"h7", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"STORM THE FORTRESS", ciphertext:"HWGVQ XLM JSKLVIWW", keyInfo:"Key: BLAZE",
-    hint1:"5-letter keyword.", hint2:"Fire-themed key.",
-    hint3:"Key = BLAZE. S+B=T, T+L=E, O+A=O..." },
-  { id:"h8", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"VANISH INTO THIN AIR", ciphertext:"BCFZLN ZHBH ALHU AZF", keyInfo:"Key: GHOST",
-    hint1:"5-letter keyword.", hint2:"Spooky themed key.",
-    hint3:"Key = GHOST. V+G=B, A+H=I, N+O=A..." },
-  { id:"h9", cipher:"Vigenère", difficulty:"Hard",
-    plaintext:"FOLLOW THE WHITE RABBIT", ciphertext:"RZYBZD XPM DBGXM VEHZAL", keyInfo:"Key: MATRIX",
-    hint1:"6-letter keyword.", hint2:"Famous sci-fi movie keyword.",
-    hint3:"Key = MATRIX. F+M=R, O+A=O, L+T=E..." },
-
-  // ── Hard: Monoalphabetic ─────────────────────────────────────────────────
-  { id:"h10", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"THE ENEMY ADVANCES AT DAWN", ciphertext:"XYZ ZQZBS CFCQJKZP CX FCIQ", keyInfo:"Key: Custom",
-    hint1:"Each letter maps to exactly one other — the mapping is scrambled.",
-    hint2:"Use frequency analysis. E is the most common English letter.",
-    hint3:"Substitution: A→C, B→F, C→J... Z→X" },
-  { id:"h11", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"HELLO WORLD", ciphertext:"SVOOL DLIOW", keyInfo:"Atbash",
-    hint1:"Mirror substitution cipher.", hint2:"A maps to Z, B to Y, etc.",
-    hint3:"Atbash: reverse alphabet. S→H, V→E, O→L..." },
-  { id:"h12", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"CRYPTOGRAPHY", ciphertext:"XIBKGLTIZKSB", keyInfo:"Atbash",
-    hint1:"Each letter is mirrored in the alphabet.", hint2:"A↔Z, B↔Y, C↔X...",
-    hint3:"Atbash cipher — apply it again to decode." },
-  { id:"h13", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"VICTORY IS OURS", ciphertext:"LKZQMHY KA MTHA", keyInfo:"Key: DRAGON",
-    hint1:"Keyword-based substitution.", hint2:"Keyword starts with a mythical creature.",
-    hint3:"Key = DRAGON. D fills position A, R fills B, A fills C..." },
-  { id:"h14", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"THE DARK KNIGHT", ciphertext:"GSV WZIP PMRTSG", keyInfo:"Atbash",
-    hint1:"Mirror substitution.", hint2:"A↔Z B↔Y C↔X — reverse alphabet.",
-    hint3:"Atbash cipher — decode by applying the same cipher again." },
-  { id:"h15", cipher:"Monoalphabetic", difficulty:"Hard",
-    plaintext:"BREAK THE ENIGMA", ciphertext:"BSAWK TZW WLCPNK", keyInfo:"Key: CIPHER",
-    hint1:"Keyword substitution cipher.", hint2:"Keyword is a cryptography term.",
-    hint3:"Key = CIPHER. C→A, I→B, P→C, H→D, E→E, R→F..." },
-
-  // ── Hard: Affine ─────────────────────────────────────────────────────────
-  { id:"h16", cipher:"Affine", difficulty:"Hard",
-    plaintext:"AFFINE CIPHER", ciphertext:"IHHWVC SWFRCP", keyInfo:"a=5, b=8",
-    hint1:"Formula: E(x) = (ax + b) mod 26", hint2:"a and b are the two keys.",
-    hint3:"a=5, b=8. A→I, F→H, F→H, I→W, N→V, E→C..." },
-  { id:"h17", cipher:"Affine", difficulty:"Hard",
-    plaintext:"MATHEMATICS", ciphertext:"DXQITDXQTLJ", keyInfo:"a=7, b=3",
-    hint1:"Affine cipher: E(x) = (ax+b) mod 26.", hint2:"a must be coprime with 26.",
-    hint3:"a=7, b=3. M→D, A→X, T→Q..." },
-
-  // ── Hard: Columnar Transposition ─────────────────────────────────────────
-  { id:"h18", cipher:"Columnar", difficulty:"Hard",
-    plaintext:"ATTACK AT DAWN", ciphertext:"TAAADAKCTWTN", keyInfo:"Key: ZEBRA (5 cols)",
-    hint1:"Transposition cipher — letters are rearranged, not substituted.",
-    hint2:"5 columns, reordered alphabetically by key letters.",
-    hint3:"Key = ZEBRA → column order 5,2,1,4,3. Read columns in that order." },
-  { id:"h19", cipher:"Columnar", difficulty:"Hard",
-    plaintext:"MEET ME TOMORROW", ciphertext:"EEMOTEMTMROO WR", keyInfo:"Key: CAT (3 cols)",
-    hint1:"Columnar transposition — text filled into rows, read by columns.",
-    hint2:"3 columns used.", hint3:"Key = CAT, column order 1-3-2." },
-
-  // ── Hard: Beaufort ───────────────────────────────────────────────────────
-  { id:"h20", cipher:"Beaufort", difficulty:"Hard",
-    plaintext:"OPEN FIRE", ciphertext:"NDVE HBZS", keyInfo:"Key: NAVY",
-    hint1:"Similar to Vigenère but uses subtraction instead of addition.",
-    hint2:"Formula: E(x) = (key - plain) mod 26",
-    hint3:"Key = NAVY. O→N using N-O mod26..." },
-]
-
-const DIFF_COLORS = {
-  Easy:   { badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400", ring: "ring-emerald-500/30" },
-  Medium: { badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",       dot: "bg-amber-400",   ring: "ring-amber-500/30"   },
-  Hard:   { badge: "bg-red-500/10 text-red-400 border-red-500/20",             dot: "bg-red-400",     ring: "ring-red-500/30"     },
-}
-
-const CIPHER_COLORS: Record<string, string> = {
-  Caesar:         "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  Vigenère:       "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  Playfair:       "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  "Rail Fence":   "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-  Monoalphabetic: "bg-pink-500/10 text-pink-400 border-pink-500/20",
-  ROT13:          "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  Affine:         "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  Beaufort:       "bg-teal-500/10 text-teal-400 border-teal-500/20",
-  Columnar:       "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-}
-
-// Score calculation
-function calcScore(difficulty: string, timeSeconds: number, hintsUsed: number): number {
-  const base = difficulty === "Easy" ? 100 : difficulty === "Medium" ? 250 : 500
-  const timePenalty = Math.min(timeSeconds * 0.5, base * 0.5)
-  const hintPenalty = hintsUsed * (difficulty === "Easy" ? 10 : difficulty === "Medium" ? 25 : 50)
-  return Math.max(10, Math.round(base - timePenalty - hintPenalty))
-}
 
 function formatTime(s: number) {
-  const m = Math.floor(s / 60)
-  const sec = s % 60
-  return m > 0 ? `${m}m ${sec.toString().padStart(2,"0")}s` : `${sec}s`
+  const m = Math.floor(s / 60), sec = s % 60
+  return m > 0 ? `${m}m ${String(sec).padStart(2, "0")}s` : `${sec}s`
 }
 
-// ── Leaderboard Storage ────────────────────────────────────────────────────────
-interface LeaderEntry { name: string; score: number; time: number; puzzle: string; difficulty: string; date: string }
+const TIERS = [
+  { name: "Novice",       min: 0,    color: "text-gray-400",   bg: "bg-gray-500/10 border-gray-500/20",     icon: "🔰" },
+  { name: "Apprentice",   min: 500,  color: "text-green-400",  bg: "bg-green-500/10 border-green-500/20",   icon: "⚡" },
+  { name: "Cryptanalyst", min: 1000, color: "text-blue-400",   bg: "bg-blue-500/10 border-blue-500/20",     icon: "🔍" },
+  { name: "Specialist",   min: 1500, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20", icon: "💎" },
+  { name: "Expert",       min: 2000, color: "text-amber-400",  bg: "bg-amber-500/10 border-amber-500/20",   icon: "🏆" },
+  { name: "Master",       min: 2500, color: "text-red-400",    bg: "bg-red-500/10 border-red-500/20",       icon: "👑" },
+]
+function getTier(r: number) { return [...TIERS].reverse().find(t => r >= t.min) ?? TIERS[0] }
 
-function loadLeaderboard(): LeaderEntry[] {
-  try {
-    if (typeof window === "undefined") return []
-    return JSON.parse(localStorage.getItem("cv_leaderboard") ?? "[]")
-  } catch { return [] }
+const DIFF_COLORS: Record<string, string> = {
+  Easy:   "text-emerald-400",
+  Medium: "text-amber-400",
+  Hard:   "text-red-400",
+}
+const DIFF_BG: Record<string, string> = {
+  Easy:   "bg-emerald-500/10 border-emerald-500/20",
+  Medium: "bg-amber-500/10 border-amber-500/20",
+  Hard:   "bg-red-500/10 border-red-500/20",
 }
 
-function saveLeaderboard(entries: LeaderEntry[]) {
-  try { localStorage.setItem("cv_leaderboard", JSON.stringify(entries.slice(0, 20))) } catch {}
-}
-
-// ── Timer Hook ────────────────────────────────────────────────────────────────
-function useTimer(active: boolean) {
-  const [seconds, setSeconds] = useState(0)
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
+export default function ProfilePage() {
+  const { user, profile, signOut } = useAuth()
+  const [showAuth, setShowAuth] = useState(false)
+  const [entries, setEntries]   = useState<ContestEntry[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState<"overview"|"history">("overview")
+  const [coins, setCoins]       = useState(0)
+  const [unlocked, setUnlocked] = useState<string[]>([])
+  const [localStreak, setLocalStreak] = useState(0)
+  const [joined, setJoined]     = useState("—")
 
   useEffect(() => {
-    if (active) {
-      ref.current = setInterval(() => setSeconds(s => s + 1), 1000)
-    } else {
-      clearInterval(ref.current!)
-    }
-    return () => clearInterval(ref.current!)
-  }, [active])
-
-  const reset = () => setSeconds(0)
-  return { seconds, reset }
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
-type Screen = "select" | "playing" | "solved" | "leaderboard"
-
-export default function ChallengePage() {
-  const { user } = useAuth()
-  const [showAuth, setShowAuth]     = useState(false)
-  const [screen, setScreen]         = useState<Screen>("select")
-  const [puzzle, setPuzzle]         = useState<Puzzle | null>(null)
-  const [attempt, setAttempt]       = useState("")
-  const [hintsRevealed, setHintsRevealed] = useState(0)
-  const [wrong, setWrong]           = useState(false)
-  const [score, setScore]           = useState(0)
-  const [playerName, setPlayerName] = useState("")
-  const [leaderboard, setLeaderboard] = useState<LeaderEntry[]>([])
-  const [diffFilter, setDiffFilter] = useState<"All" | "Easy" | "Medium" | "Hard">("All")
-  const [shake, setShake]           = useState(false)
-  const [solved, setSolved]         = useState<Set<string>>(new Set())
-
-  const timerActive = screen === "playing"
-  const { seconds, reset: resetTimer } = useTimer(timerActive)
-
-  useEffect(() => { setLeaderboard(loadLeaderboard()) }, [])
-
-  const startPuzzle = (p: Puzzle) => {
-    if (!user) { setShowAuth(true); return }
-    setPuzzle(p); setAttempt(""); setHintsRevealed(0)
-    setWrong(false); resetTimer(); setScreen("playing")
-  }
-
-  const checkAnswer = () => {
-    if (!puzzle) return
-    const clean = (s: string) => s.toUpperCase().replace(/\s+/g, " ").trim()
-    if (clean(attempt) === clean(puzzle.plaintext)) {
-      const s = calcScore(puzzle.difficulty, seconds, hintsRevealed)
-      setScore(s)
-      setSolved(prev => new Set([...prev, puzzle.id]))
-      setScreen("solved")
-      // Award coins
+    const sync = () => {
       try {
-        const bonus = puzzle.difficulty === "Hard" ? 30 : puzzle.difficulty === "Medium" ? 15 : 5
-        addCoins(bonus)
+        setCoins(Number(localStorage.getItem("cv_coins") ?? "0"))
+        const lsStreak = Number(localStorage.getItem("cv_streak") ?? "0")
+        if (lsStreak > 0) setLocalStreak(lsStreak)
+        setUnlocked(getUnlocked())
       } catch {}
-    } else {
-      setWrong(true); setShake(true)
-      setTimeout(() => { setWrong(false); setShake(false) }, 600)
     }
-  }
-
-  const submitScore = () => {
-    if (!puzzle || !playerName.trim()) return
-    const entry: LeaderEntry = {
-      name: playerName.trim(), score, time: seconds,
-      puzzle: `${puzzle.cipher} — ${puzzle.difficulty}`,
-      difficulty: puzzle.difficulty,
-      date: new Date().toLocaleDateString(),
+    sync()
+    window.addEventListener("cv_coins_changed", sync)
+    window.addEventListener("focus", sync)
+    return () => {
+      window.removeEventListener("cv_coins_changed", sync)
+      window.removeEventListener("focus", sync)
     }
-    const updated = [...leaderboard, entry].sort((a, b) => b.score - a.score)
-    setLeaderboard(updated)
-    saveLeaderboard(updated)
-    setScreen("leaderboard")
-  }
+  }, [])
 
-  const hints = puzzle ? [puzzle.hint1, puzzle.hint2, puzzle.hint3] : []
-  const filtered = diffFilter === "All" ? PUZZLES : PUZZLES.filter(p => p.difficulty === diffFilter)
+  useEffect(() => {
+    if (!user) { setLoading(false); return }
+    supabase
+      .from("contest_entries")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => { setEntries((data ?? []) as ContestEntry[]); setLoading(false) })
+  }, [user])
 
-  // ── Select Screen ────────────────────────────────────────────────────────────
-  if (showAuth) return <AuthModal onClose={() => setShowAuth(false)} defaultTab="login" />
+  useEffect(() => {
+    if (profile?.created_at) {
+      setJoined(new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))
+    }
+  }, [profile?.created_at])
 
-  if (screen === "select") return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-7 flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-xl font-semibold text-white tracking-tight">Cipher Challenge</h1>
-            <span className="text-[10px] font-semibold uppercase tracking-widest border px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border-violet-500/20">
-              Puzzle Mode
-            </span>
-          </div>
-          <p className="text-[13px] text-gray-500">Decrypt the ciphertext using your knowledge of cryptographic algorithms. Use hints if you're stuck.</p>
-        </div>
-        <button onClick={() => setScreen("leaderboard")}
-          className="flex items-center gap-2 border border-gray-700/60 text-gray-400 hover:text-white hover:border-gray-500 px-4 py-1.5 rounded-lg text-[12px] transition-colors">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M6 1l1.5 3 3.5.5-2.5 2.5.5 3.5L6 9l-3 1.5.5-3.5L1 4.5 4.5 4z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-          </svg>
-          Leaderboard
+  if (!user || !profile) return (
+    <div className="p-8 max-w-2xl mx-auto">
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+      <div className="text-center py-28 border border-gray-800/40 rounded-2xl bg-[#0d0d0d]">
+        <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-4 text-3xl">🔐</div>
+        <h2 className="text-[15px] font-semibold text-white mb-2">Sign in to view your profile</h2>
+        <p className="text-[13px] text-gray-500 mb-6">Track your rating, contest history and achievements.</p>
+        <button onClick={() => setShowAuth(true)}
+          className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-colors">
+          Sign In / Register
         </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-7">
-        {[
-          { label: "Total Puzzles", value: PUZZLES.length.toString() },
-          { label: "Solved",        value: solved.size.toString(), color: "text-emerald-400" },
-          { label: "Remaining",     value: (PUZZLES.length - solved.size).toString() },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="bg-gray-900/60 border border-gray-800/60 rounded-xl p-4 text-center">
-            <p className={`text-2xl font-bold ${color ?? "text-white"}`}>{value}</p>
-            <p className="text-[11px] text-gray-600 uppercase tracking-wider mt-0.5">{label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Difficulty filter */}
-      <div className="flex gap-1.5 mb-5">
-        {(["All","Easy","Medium","Hard"] as const).map(d => (
-          <button key={d} onClick={() => setDiffFilter(d)}
-            className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all border ${
-              diffFilter === d ? "bg-white text-black border-white" : "bg-gray-900/40 border-gray-800/60 text-gray-500 hover:text-gray-300"
-            }`}>{d}</button>
-        ))}
-      </div>
-
-      {/* Puzzle grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {filtered.map((p) => {
-          const dc = DIFF_COLORS[p.difficulty]
-          const isSolved = solved.has(p.id)
-          return (
-            <button key={p.id} onClick={() => startPuzzle(p)}
-              className={`group text-left bg-[#0d0d0d] border rounded-xl p-5 transition-all duration-200 hover:border-gray-600 relative overflow-hidden ${
-                isSolved ? "border-emerald-700/40" : "border-gray-800/60"
-              }`}>
-              {isSolved && (
-                <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                  <span className="text-emerald-400 text-[11px]">✓</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2 mb-3">
-                <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${dc.badge}`}>
-                  {p.difficulty}
-                </span>
-                <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${CIPHER_COLORS[p.cipher] ?? ""}`}>
-                  {p.cipher}
-                </span>
-              </div>
-              <p className="text-[13px] font-mono text-gray-300 mb-2 tracking-wider">{p.ciphertext}</p>
-              <p className="text-[11px] text-gray-600">
-                {p.plaintext.length} characters · {p.cipher} cipher
-              </p>
-              <div className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors">
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <path d="M1.5 5.5h8m0 0L6 2m3.5 3.5L6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Attempt challenge
-              </div>
-            </button>
-          )
-        })}
       </div>
     </div>
   )
 
-  // ── Playing Screen ────────────────────────────────────────────────────────────
-  if (screen === "playing" && puzzle) {
-    const dc = DIFF_COLORS[puzzle.difficulty]
-    return (
-      <div className="p-8 max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <button onClick={() => setScreen("select")}
-            className="flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-300 transition-colors">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Back to puzzles
-          </button>
-          <div className="flex items-center gap-3">
-            {/* Timer */}
-            <div className="flex items-center gap-1.5 bg-gray-900/60 border border-gray-800/60 rounded-lg px-3 py-1.5">
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" className="text-gray-500">
-                <circle cx="5.5" cy="6" r="4" stroke="currentColor" strokeWidth="1.2"/>
-                <path d="M5.5 3.5V1.5M4 1.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                <path d="M5.5 6V4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-              <span className="text-[12px] font-mono text-white">{formatTime(seconds)}</span>
-            </div>
-            <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${dc.badge}`}>
-              {puzzle.difficulty}
-            </span>
-          </div>
-        </div>
+  const tier         = getTier(profile.rating)
+  const nextTier     = TIERS.find(t => t.min > profile.rating)
+  const ptsToNext    = nextTier ? nextTier.min - profile.rating : null
+  const tierProgress = nextTier ? ((profile.rating - tier.min) / (nextTier.min - tier.min)) * 100 : 100
 
-        {/* Cipher badge */}
-        <div className="flex items-center gap-2 mb-4">
-          <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${CIPHER_COLORS[puzzle.cipher] ?? ""}`}>
-            {puzzle.cipher}
-          </span>
-          <span className="text-[11px] text-gray-600">{puzzle.keyInfo}</span>
-        </div>
+  const avgScore     = entries.length ? Math.round(entries.reduce((a, e) => a + e.score, 0) / entries.length) : 0
+  const avgTime      = entries.length ? Math.round(entries.reduce((a, e) => a + e.time_seconds, 0) / entries.length) : 0
+  const noHintSolves = entries.filter(e => e.hints_used === 0).length
+  const hardSolves   = entries.filter(e => e.difficulty === "Hard").length
+  const bestTime     = entries.length ? Math.min(...entries.map(e => e.time_seconds)) : 0
 
-        {/* Ciphertext */}
-        <div className="bg-gray-900/60 border border-gray-800/60 rounded-xl p-5 mb-6">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Ciphertext to Decrypt</p>
-          <p className="text-2xl font-mono text-white tracking-widest leading-relaxed">{puzzle.ciphertext}</p>
-          <p className="text-[11px] text-gray-600 mt-2">{puzzle.plaintext.replace(/[^ ]/g, "·")} ({puzzle.plaintext.replace(/ /g, "").length} letters)</p>
-        </div>
+  const ratingHistory = entries.slice().reverse().map(e => e.rating_after)
+  const sparkMin = ratingHistory.length ? Math.min(...ratingHistory) - 30 : 970
+  const sparkMax = ratingHistory.length ? Math.max(...ratingHistory) + 30 : 1030
+  const sparkH   = 56
 
-        {/* Answer input */}
-        <div className="mb-5">
-          <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Your Answer</label>
-          <div className={`flex gap-2 transition-all ${shake ? "animate-bounce" : ""}`}>
-            <input
-              value={attempt}
-              onChange={(e) => setAttempt(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && checkAnswer()}
-              placeholder="Type the decrypted plaintext..."
-              className={`flex-1 bg-gray-900/60 border rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-gray-700 focus:outline-none transition-colors ${
-                wrong ? "border-red-500/60 bg-red-900/10" : "border-gray-800 focus:border-gray-600"
-              }`}
-            />
-            <button onClick={checkAnswer}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-[13px] font-semibold transition-colors">
-              Check
-            </button>
-          </div>
-          {wrong && <p className="text-red-400 text-[12px] mt-1.5">✗ Incorrect — try again or use a hint</p>}
-        </div>
+  const tierBarColor =
+    tier.color.includes("gray")   ? "from-gray-500 to-gray-400" :
+    tier.color.includes("green")  ? "from-green-600 to-green-400" :
+    tier.color.includes("blue")   ? "from-blue-600 to-blue-400" :
+    tier.color.includes("violet") ? "from-violet-600 to-violet-400" :
+    tier.color.includes("amber")  ? "from-amber-600 to-amber-400" :
+                                    "from-red-600 to-red-400"
 
-        {/* Hints */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[11px] text-gray-600 uppercase tracking-wider">Hints</p>
-            <p className="text-[10px] text-gray-700">{hintsRevealed}/3 used · -{hintsRevealed * (puzzle.difficulty === "Easy" ? 10 : puzzle.difficulty === "Medium" ? 25 : 50)} pts</p>
-          </div>
-          {hints.map((hint, i) => {
-            const revealed = i < hintsRevealed
-            return (
-              <div key={i} className={`border rounded-xl p-3 transition-all ${revealed ? "bg-amber-900/10 border-amber-700/30" : "bg-gray-900/30 border-gray-800/30"}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Hint {i + 1}</span>
-                  {!revealed && (
-                    <button onClick={() => setHintsRevealed(i + 1)}
-                      className="text-[11px] text-gray-500 hover:text-amber-400 transition-colors">
-                      Reveal (−{puzzle.difficulty === "Easy" ? 10 : puzzle.difficulty === "Medium" ? 25 : 50} pts)
-                    </button>
-                  )}
-                </div>
-                {revealed && <p className="text-[12px] text-gray-300 mt-1 leading-relaxed">{hint}</p>}
-              </div>
-            )
-          })}
-        </div>
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
 
-        {/* Score preview */}
-        <div className="mt-5 bg-gray-900/40 border border-gray-800/40 rounded-xl p-3 flex items-center justify-between">
-          <span className="text-[11px] text-gray-600">Current score if solved now</span>
-          <span className="text-[14px] font-bold text-white">{calcScore(puzzle.difficulty, seconds, hintsRevealed)} pts</span>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Solved Screen ─────────────────────────────────────────────────────────────
-  if (screen === "solved" && puzzle) {
-    const dc = DIFF_COLORS[puzzle.difficulty]
-    return (
-      <div className="p-8 max-w-2xl mx-auto">
-        {/* Celebration */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto mb-4 text-3xl">
-            🔓
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-1">Decrypted!</h2>
-          <p className="text-[13px] text-gray-500">You cracked the {puzzle.cipher} cipher</p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {[
-            { label: "Score",       value: `${score}`,              color: "text-emerald-400" },
-            { label: "Time",        value: formatTime(seconds),     color: "text-blue-400"    },
-            { label: "Hints Used",  value: `${hintsRevealed}/3`,    color: hintsRevealed === 0 ? "text-emerald-400" : "text-amber-400" },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-gray-900/60 border border-gray-800/60 rounded-xl p-4 text-center">
-              <p className={`text-xl font-bold ${color}`}>{value}</p>
-              <p className="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Answer reveal */}
-        <div className="bg-emerald-900/20 border border-emerald-700/30 rounded-xl p-4 mb-6">
-          <p className="text-[10px] text-emerald-600 uppercase tracking-widest mb-1">Plaintext</p>
-          <p className="text-lg font-mono font-bold text-emerald-400">{puzzle.plaintext}</p>
-          <p className="text-[11px] text-gray-600 mt-1">{puzzle.keyInfo}</p>
-        </div>
-
-        {/* Submit to leaderboard */}
-        <div className="bg-gray-900/60 border border-gray-800/60 rounded-xl p-4 mb-4">
-          <p className="text-[12px] font-semibold text-white mb-3">Submit to Leaderboard</p>
-          <div className="flex gap-2">
-            <input value={playerName} onChange={(e) => setPlayerName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitScore()}
-              placeholder="Enter your name..."
-              className="flex-1 bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2 text-sm font-mono text-white placeholder-gray-700 focus:outline-none focus:border-gray-600" />
-            <button onClick={submitScore} disabled={!playerName.trim()}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-5 py-2 rounded-lg text-[12px] font-semibold transition-colors">
-              Submit
-            </button>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={() => setScreen("select")}
-            className="flex-1 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 py-2 rounded-xl text-[13px] font-medium transition-colors">
-            More Puzzles
-          </button>
-          <button onClick={() => setScreen("leaderboard")}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2 rounded-xl text-[13px] font-medium transition-colors">
-            View Leaderboard
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Leaderboard Screen ────────────────────────────────────────────────────────
-  if (screen === "leaderboard") return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-7">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-white tracking-tight mb-0.5">Leaderboard</h1>
-          <p className="text-[13px] text-gray-500">Top scores across all cipher challenges.</p>
+          <h1 className="text-xl font-semibold text-white tracking-tight">Profile</h1>
+          <p className="text-[13px] text-gray-500 mt-0.5">Your stats, rating history and contest records.</p>
         </div>
-        <button onClick={() => setScreen("select")}
-          className="flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-300 transition-colors">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back to puzzles
+        <button onClick={async () => { await signOut() }}
+          className="text-[12px] text-gray-500 hover:text-gray-300 border border-gray-800 px-3 py-1.5 rounded-lg transition-colors">
+          Sign out
         </button>
       </div>
 
-      {leaderboard.length === 0 ? (
-        <div className="text-center py-20 border border-gray-800/40 rounded-2xl">
-          <p className="text-4xl mb-3">🏆</p>
-          <p className="text-[14px] text-gray-500">No scores yet. Solve a puzzle to get on the board!</p>
-          <button onClick={() => setScreen("select")}
-            className="mt-4 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-[13px] font-medium transition-colors">
-            Start a Challenge
-          </button>
+      {/* Hero card */}
+      <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-6 mb-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 rounded-full blur-3xl pointer-events-none opacity-60"
+          style={{ background: tier.color.includes("blue") ? "radial-gradient(circle,rgba(59,130,246,0.07) 0%,transparent 70%)" : tier.color.includes("violet") ? "radial-gradient(circle,rgba(139,92,246,0.07) 0%,transparent 70%)" : tier.color.includes("amber") ? "radial-gradient(circle,rgba(245,158,11,0.07) 0%,transparent 70%)" : "radial-gradient(circle,rgba(100,100,100,0.05) 0%,transparent 70%)" }} />
+
+        <div className="flex items-start gap-5">
+          <div className={`w-16 h-16 rounded-2xl border-2 flex items-center justify-center text-3xl shrink-0 ${tier.bg}`}>
+            {tier.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5 mb-1">
+              <h2 className="text-xl font-bold text-white">{profile.username}</h2>
+              <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${tier.bg} ${tier.color}`}>
+                {tier.icon} {tier.name}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-600 mb-4">Joined {joined}</p>
+
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className={`text-3xl font-bold ${tier.color}`}>{profile.rating}</span>
+              <span className="text-[12px] text-gray-600">contest rating</span>
+              {ptsToNext && (
+                <span className="text-[11px] text-gray-700 ml-auto">{ptsToNext} pts to {nextTier?.icon} {nextTier?.name}</span>
+              )}
+            </div>
+
+            <div className="h-2 bg-gray-800/80 rounded-full overflow-hidden mb-1.5">
+              <div className={`h-full rounded-full bg-gradient-to-r ${tierBarColor} transition-all duration-1000`}
+                style={{ width: `${Math.max(tierProgress, 3)}%` }} />
+            </div>
+            <div className="flex">
+              {TIERS.map((t, i) => (
+                <div key={t.name} className="flex-1 text-center relative">
+                  <span className={`text-[10px] ${profile.rating >= t.min ? t.color : "text-gray-800"}`}>{t.icon}</span>
+                  {i < TIERS.length - 1 && (
+                    <div className="absolute top-1/2 right-0 w-px h-2 bg-gray-800 -translate-y-1/2" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {/* Header */}
-          <div className="grid grid-cols-[40px_1fr_100px_80px_80px_80px] gap-3 px-4 py-2">
-            {["#", "Player", "Puzzle", "Score", "Time", "Date"].map(h => (
-              <p key={h} className="text-[10px] text-gray-600 uppercase tracking-wider">{h}</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 bg-gray-900/50 border border-gray-800/50 rounded-xl p-1 w-fit">
+        {(["overview", "history"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-5 py-1.5 rounded-lg text-[12px] font-medium capitalize transition-all ${
+              tab === t ? "bg-gray-800 text-white" : "text-gray-600 hover:text-gray-400"
+            }`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <>
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            {[
+              { label: "Contests Played", value: profile.contests_played,                            color: "text-white"       },
+              { label: "Best Score",       value: profile.best_score > 0 ? profile.best_score : "—",  color: "text-emerald-400" },
+              { label: "Avg Score",        value: avgScore || "—",                                    color: "text-blue-400"    },
+              { label: "Avg Time",         value: avgTime ? formatTime(avgTime) : "—",                color: "text-violet-400"  },
+              { label: "Best Time",        value: bestTime ? formatTime(bestTime) : "—",              color: "text-cyan-400"    },
+              { label: "No-Hint Solves",   value: noHintSolves,                                       color: "text-amber-400"   },
+              { label: "Hard Solved",      value: hardSolves,                                         color: "text-red-400"     },
+              { label: "Streak", value: (() => { const s = Math.max(profile.streak, localStreak); return s >= 1 ? `${s} 🔥` : "—" })(), color: Math.max(profile.streak, localStreak) >= 1 ? "text-orange-400" : "text-gray-500" },
+              { label: "Coins",            value: coins > 0 ? `🪙 ${coins}` : "0",                         color: "text-amber-400"   },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-[#0d0d0d] border border-gray-800/60 rounded-xl p-4 text-center">
+                <p className={`text-xl font-bold ${color}`}>{value}</p>
+                <p className="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">{label}</p>
+              </div>
             ))}
           </div>
 
-          {leaderboard.map((entry, i) => {
-            const dc = DIFF_COLORS[entry.difficulty as keyof typeof DIFF_COLORS] ?? DIFF_COLORS.Easy
+          {/* Rating sparkline */}
+          {ratingHistory.length >= 1 ? (
+            <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5 mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[12px] font-semibold text-white">Rating History</p>
+                <span className="text-[11px] font-mono text-gray-600">{ratingHistory.length} contests</span>
+              </div>
+              <div className="relative" style={{ height: `${sparkH + 24}px` }}>
+                <svg width="100%" height={sparkH + 24} className="overflow-visible">
+                  <defs>
+                    <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25"/>
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  {[0, 0.5, 1].map(f => (
+                    <line key={f} x1="0" y1={sparkH - f * sparkH + 12} x2="100%" y2={sparkH - f * sparkH + 12}
+                      stroke="#1a1a1a" strokeWidth="1" />
+                  ))}
+                  {(() => {
+                    const n = ratingHistory.length
+                    const pts = ratingHistory.map((v, i) => ({
+                      x: n === 1 ? "50%" : `${(i / (n - 1)) * 100}%`,
+                      y: sparkH - ((sparkMax - sparkMin) > 0 ? ((v - sparkMin) / (sparkMax - sparkMin)) * sparkH : sparkH / 2) + 12
+                    }))
+                    const lineD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")
+                    const areaD = `${lineD} L 100% ${sparkH + 12} L 0% ${sparkH + 12} Z`
+                    return (
+                      <>
+                        <path d={areaD} fill="url(#sparkGrad)" />
+                        <path d={lineD} stroke="#3b82f6" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        {pts.map((p, i) => (
+                          <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#3b82f6" stroke="#0d0d0d" strokeWidth="2" />
+                        ))}
+                      </>
+                    )
+                  })()}
+                </svg>
+                <div className="absolute left-0 top-0 h-full flex flex-col justify-between pointer-events-none">
+                  <span className="text-[9px] text-gray-700 font-mono">{sparkMax}</span>
+                  <span className="text-[9px] text-gray-700 font-mono">{sparkMin}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5 mb-4 text-center py-8">
+              <p className="text-[12px] text-gray-600">Play your first Daily Contest to see your rating history.</p>
+            </div>
+          )}
+
+          {/* Achievements */}
+          {(() => {
+            const unlockedSet = new Set(unlocked)
+            const earnedCount = ACHIEVEMENTS.filter(a => unlockedSet.has(a.id)).length
+            const rarityOrder: Record<string,number> = { legendary:0, epic:1, rare:2, common:3 }
+            const sorted = [...ACHIEVEMENTS].sort((a,b) => {
+              const ae = unlockedSet.has(a.id), be = unlockedSet.has(b.id)
+              if (ae !== be) return ae ? -1 : 1
+              return rarityOrder[a.rarity] - rarityOrder[b.rarity]
+            })
             return (
-              <div key={i}
-                className={`grid grid-cols-[40px_1fr_100px_80px_80px_80px] gap-3 items-center px-4 py-3 rounded-xl border transition-all ${
-                  i === 0 ? "bg-amber-900/10 border-amber-700/20" :
-                  i === 1 ? "bg-gray-400/5 border-gray-600/20" :
-                  i === 2 ? "bg-orange-900/10 border-orange-700/20" :
-                  "bg-gray-900/30 border-gray-800/30"
-                }`}>
-                <span className={`text-[13px] font-bold ${i === 0 ? "text-amber-400" : i === 1 ? "text-gray-300" : i === 2 ? "text-orange-400" : "text-gray-600"}`}>
-                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`}
-                </span>
-                <span className="text-[13px] font-semibold text-white truncate">{entry.name}</span>
-                <span className="text-[11px] text-gray-500 font-mono truncate">{entry.puzzle}</span>
-                <span className="text-[13px] font-bold text-emerald-400">{entry.score}</span>
-                <span className="text-[12px] font-mono text-blue-400">{formatTime(entry.time)}</span>
-                <span className="text-[11px] text-gray-600">{entry.date}</span>
+              <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[13px] font-semibold text-white">Achievements</p>
+                    <p className="text-[11px] text-gray-600 mt-0.5">{earnedCount} / {ACHIEVEMENTS.length} unlocked</p>
+                  </div>
+                  {/* Rarity breakdown */}
+                  <div className="flex items-center gap-2">
+                    {(["legendary","epic","rare","common"] as const).map(r => {
+                      const count = ACHIEVEMENTS.filter(a => a.rarity === r && unlockedSet.has(a.id)).length
+                      if (count === 0) return null
+                      return (
+                        <div key={r} className="flex items-center gap-1 px-2 py-1 rounded-lg"
+                          style={{ background: RARITY[r].bg, border: `1px solid ${RARITY[r].border}` }}>
+                          <span className="text-[11px] font-bold" style={{ color: RARITY[r].color }}>{count}</span>
+                          <span className="text-[9px] text-gray-600 capitalize">{r[0].toUpperCase()}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full h-1.5 bg-gray-800 rounded-full mb-5 overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${(earnedCount/ACHIEVEMENTS.length)*100}%`,
+                      background: "linear-gradient(90deg,#3b82f6,#8b5cf6,#fbbf24)" }} />
+                </div>
+
+                {/* Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {sorted.map(a => {
+                    const earned = unlockedSet.has(a.id)
+                    const r = RARITY[a.rarity]
+                    const isSecret = a.secret && !earned
+                    return (
+                      <div key={a.id}
+                        className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200"
+                        style={{
+                          background: earned ? r.bg : "transparent",
+                          border: `1px solid ${earned ? r.border : "rgba(255,255,255,0.05)"}`,
+                          boxShadow: earned ? `0 0 16px ${r.glow}` : "none",
+                          opacity: earned ? 1 : 0.45,
+                        }}>
+                        {/* Icon */}
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0"
+                          style={{ background: earned ? r.bg : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${earned ? r.border : "rgba(255,255,255,0.06)"}` }}>
+                          {isSecret ? "🔒" : a.icon}
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <p className="text-[11px] font-bold text-white truncate">
+                              {isSecret ? "???" : a.label}
+                            </p>
+                            <span className="text-[8px] font-bold uppercase tracking-widest shrink-0"
+                              style={{ color: r.color }}>{a.rarity[0].toUpperCase()}</span>
+                          </div>
+                          <p className="text-[10px] text-gray-600 truncate leading-tight">
+                            {isSecret ? "Hidden achievement" : a.desc}
+                          </p>
+                        </div>
+                        {/* Check */}
+                        {earned && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
+                            <circle cx="7" cy="7" r="6" stroke={r.color} strokeWidth="1.3"/>
+                            <path d="M4.5 7l2 2 3-3" stroke={r.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )
-          })}
+          })()}
+        </>
+      )}
+
+      {tab === "history" && (
+        <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[12px] font-semibold text-white">Contest History</p>
+            <span className="text-[11px] text-gray-600">{entries.length} entries</span>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <svg className="animate-spin w-5 h-5 text-blue-500" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="30 20"/>
+              </svg>
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-3xl mb-3">📭</p>
+              <p className="text-[13px] text-white mb-1">No contest history yet</p>
+              <p className="text-[12px] text-gray-600">Complete your first Daily Contest to see results here.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-[90px_1fr_70px_70px_50px_80px_60px] gap-3 px-3 py-1.5">
+                {["Date","Cipher","Score","Time","Hints","Rating","Δ"].map(h => (
+                  <p key={h} className="text-[9px] text-gray-600 uppercase tracking-widest">{h}</p>
+                ))}
+              </div>
+              {entries.map((e, i) => {
+                const delta = e.rating_after - e.rating_before
+                return (
+                  <div key={i} className="grid grid-cols-[90px_1fr_70px_70px_50px_80px_60px] gap-3 items-center px-3 py-2.5 rounded-xl border bg-gray-900/20 border-gray-800/30 hover:border-gray-700/50 transition-colors">
+                    <span className="text-[11px] font-mono text-gray-500">{e.puzzle_date}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`text-[9px] font-bold uppercase tracking-wider border px-1.5 py-0.5 rounded-full shrink-0 ${DIFF_BG[e.difficulty] ?? ""} ${DIFF_COLORS[e.difficulty] ?? "text-gray-400"}`}>
+                        {e.difficulty[0]}
+                      </span>
+                      <span className="text-[11px] text-gray-400 font-mono truncate">{e.puzzle_id}</span>
+                    </div>
+                    <span className="text-[12px] font-bold text-emerald-400">{e.score}</span>
+                    <span className="text-[11px] font-mono text-blue-400">{formatTime(e.time_seconds)}</span>
+                    <span className="text-[11px] text-gray-500 text-center">{e.hints_used}/3</span>
+                    <span className="text-[11px] font-mono text-white">{e.rating_after}</span>
+                    <span className={`text-[11px] font-mono font-bold ${delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {delta >= 0 ? `+${delta}` : delta}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
-
-  return null
 }

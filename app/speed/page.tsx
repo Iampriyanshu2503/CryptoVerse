@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext"
+import { addCoins } from "@/lib/inventory"
 import { useGame } from "@/lib/GameContext"
 import AuthModal from "@/components/AuthModal"
 
@@ -131,6 +132,13 @@ export default function SpeedRoundPage() {
       })
       setHighScores(loadHighScores())
     }
+    // Award coins based on speed round performance
+    try {
+      let earned = finalSolved * 10
+      if (finalSolved >= 10) earned += 100
+      if (finalSolved >= 15) earned += 150
+      addCoins(earned)
+    } catch {}
   }, [user, profile])
 
   const startGame = () => {

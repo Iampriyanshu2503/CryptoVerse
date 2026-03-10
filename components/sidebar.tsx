@@ -146,7 +146,15 @@ function LogoBlock() {
 }
 
 function UserFooter({ onNavClick }: { onNavClick?: () => void }) {
-  const { profile } = useAuth()
+  const { profile, signOut } = useAuth()
+  const [signingOut, setSigningOut] = useState(false)
+
+  const handleSignOut = async () => {
+    setSigningOut(true)
+    await signOut()
+    // signOut redirects to "/" so finally never runs — that's fine
+  }
+
   if (!profile) return (
     <div className="border-t border-gray-800/60 px-3 py-3">
       <div className="flex items-center gap-2">
@@ -160,7 +168,7 @@ function UserFooter({ onNavClick }: { onNavClick?: () => void }) {
   )
   const tier = getTier(profile.rating)
   return (
-    <div className="border-t border-gray-800/60 px-2 py-2">
+    <div className="border-t border-gray-800/60 px-2 py-2 space-y-1">
       <Link href="/profile" onClick={onNavClick}
         className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-gray-800/40 transition-colors group">
         <div className={`w-7 h-7 rounded-lg border flex items-center justify-center text-sm shrink-0 ${tier.color.replace("text-","border-").replace("-400","-700/40")} bg-gray-900/60`}>
@@ -174,6 +182,19 @@ function UserFooter({ onNavClick }: { onNavClick?: () => void }) {
           <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </Link>
+      <button onClick={handleSignOut} disabled={signingOut}
+        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        {signingOut ? (
+          <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="20 10"/>
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
+            <path d="M5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2M9.5 9.5L12 7l-2.5-2.5M12 7H5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+        <span className="text-[11px] font-medium tracking-wide">{signingOut ? "Signing out..." : "Sign out"}</span>
+      </button>
     </div>
   )
 }

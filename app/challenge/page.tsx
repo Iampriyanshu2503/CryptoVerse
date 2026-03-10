@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useAuth } from "@/lib/AuthContext"
+import AuthModal from "@/components/AuthModal"
+import { addCoins } from "@/lib/inventory"
 
 // ── Puzzle Data ────────────────────────────────────────────────────────────────
 interface Puzzle {
@@ -303,6 +306,8 @@ function useTimer(active: boolean) {
 type Screen = "select" | "playing" | "solved" | "leaderboard"
 
 export default function ChallengePage() {
+  const { user } = useAuth()
+  const [showAuth, setShowAuth]     = useState(false)
   const [screen, setScreen]         = useState<Screen>("select")
   const [puzzle, setPuzzle]         = useState<Puzzle | null>(null)
   const [attempt, setAttempt]       = useState("")
@@ -321,6 +326,7 @@ export default function ChallengePage() {
   useEffect(() => { setLeaderboard(loadLeaderboard()) }, [])
 
   const startPuzzle = (p: Puzzle) => {
+    if (!user) { setShowAuth(true); return }
     setPuzzle(p); setAttempt(""); setHintsRevealed(0)
     setWrong(false); resetTimer(); setScreen("playing")
   }
@@ -333,6 +339,11 @@ export default function ChallengePage() {
       setScore(s)
       setSolved(prev => new Set([...prev, puzzle.id]))
       setScreen("solved")
+      // Award coins
+      try {
+        const bonus = puzzle.difficulty === "Hard" ? 30 : puzzle.difficulty === "Medium" ? 15 : 5
+        addCoins(bonus)
+      } catch {}
     } else {
       setWrong(true); setShake(true)
       setTimeout(() => { setWrong(false); setShake(false) }, 600)
@@ -357,6 +368,8 @@ export default function ChallengePage() {
   const filtered = diffFilter === "All" ? PUZZLES : PUZZLES.filter(p => p.difficulty === diffFilter)
 
   // ── Select Screen ────────────────────────────────────────────────────────────
+  if (showAuth) return <AuthModal onClose={() => setShowAuth(false)} defaultTab="login" />
+
   if (screen === "select") return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="mb-7 flex items-start justify-between">

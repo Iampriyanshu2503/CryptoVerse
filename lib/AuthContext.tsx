@@ -21,7 +21,10 @@ interface AuthCtx {
   signUp:          (email: string, password: string, username: string) => Promise<string | null>
   signIn:          (email: string, password: string) => Promise<string | null>
   signOut:         () => Promise<void>
-  refreshProfile:  () => Promise<void>
+  refreshProfile:       () => Promise<void>
+  updateProfileLocal:   (updates: Record<string, any>) => void
+  resetPassword:   (email: string) => Promise<string | null>
+  updatePassword:  (newPassword: string) => Promise<string | null>
 }
 
 const AuthContext = createContext<AuthCtx | null>(null)
@@ -125,11 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       try {
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Request timed out. Check your connection.")), 10000)
-        )
-        const auth = supabase.auth.signInWithPassword({ email, password })
-        const { error } = await Promise.race([auth, timeout])
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
         return error?.message ?? null
       } catch (err: any) {
         return err?.message ?? "An unexpected error occurred"
@@ -144,6 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setProfile(null)
     setSession(null)
+    // Force full reload so all page state is cleared
+    if (typeof window !== "undefined") window.location.href = "/"
   }, [])
 
   // ── refreshProfile ────────────────────────────────────────────────────────
@@ -152,8 +153,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (uid) await fetchProfile(uid)
   }, [fetchProfile])
 
+  // ── updateProfileLocal — update profile state without DB round-trip ───────
+  const updateProfileLocal = useCallback((updates: Partial<typeof profile>) => {
+    setProfile(prev => prev ? { ...prev, ...updates } : prev)
+  }, [])
+
+  // ── resetPassword — sends OTP/magic link to email ─────────────────────────
+  const resetPassword = useCallback(async (email: string): Promise<string | null> => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      return error?.message ?? null
+    } catch (err: any) {
+      return err?.message ?? "Failed to send reset email"
+    }
+  }, [])
+
+  // ── updatePassword — called after user clicks link in email ───────────────
+  const updatePassword = useCallback(async (newPassword: string): Promise<string | null> => {
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      return error?.message ?? null
+    } catch (err: any) {
+      return err?.message ?? "Failed to update password"
+    }
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, profile, session, loading, signUp, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, session, loading, signUp, signIn, signOut, refreshProfile, updateProfileLocal, resetPassword, updatePassword }}>
       {children}
     </AuthContext.Provider>
   )

@@ -37,6 +37,26 @@ export default function ProfilePage() {
   const [entries, setEntries]   = useState<ContestEntry[]>([])
   const [loading, setLoading]   = useState(true)
   const [tab, setTab]           = useState<"overview"|"history">("overview")
+  const [coins, setCoins]       = useState(0)
+  const [localStreak, setLocalStreak] = useState(0)
+  const [joined, setJoined]     = useState("—")
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        setCoins(Number(localStorage.getItem("cv_coins") ?? "0"))
+        const lsStreak = Number(localStorage.getItem("cv_streak") ?? "0")
+        if (lsStreak > 0) setLocalStreak(lsStreak)
+      } catch {}
+    }
+    sync()
+    window.addEventListener("cv_coins_changed", sync)
+    window.addEventListener("focus", sync)
+    return () => {
+      window.removeEventListener("cv_coins_changed", sync)
+      window.removeEventListener("focus", sync)
+    }
+  }, [])
 
   useEffect(() => {
     if (!user) { setLoading(false); return }
@@ -48,6 +68,12 @@ export default function ProfilePage() {
       .limit(50)
       .then(({ data }) => { setEntries((data ?? []) as ContestEntry[]); setLoading(false) })
   }, [user])
+
+  useEffect(() => {
+    if (profile?.created_at) {
+      setJoined(new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))
+    }
+  }, [profile?.created_at])
 
   if (!user || !profile) return (
     <div className="p-8 max-w-2xl mx-auto">
@@ -80,10 +106,6 @@ export default function ProfilePage() {
   const sparkMax = ratingHistory.length ? Math.max(...ratingHistory) + 30 : 1030
   const sparkH   = 56
 
-  const joined = profile.created_at
-    ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
-    : "—"
-
   const tierBarColor =
     tier.color.includes("gray")   ? "from-gray-500 to-gray-400" :
     tier.color.includes("green")  ? "from-green-600 to-green-400" :
@@ -101,7 +123,7 @@ export default function ProfilePage() {
           <h1 className="text-xl font-semibold text-white tracking-tight">Profile</h1>
           <p className="text-[13px] text-gray-500 mt-0.5">Your stats, rating history and contest records.</p>
         </div>
-        <button onClick={signOut}
+        <button onClick={async () => { await signOut() }}
           className="text-[12px] text-gray-500 hover:text-gray-300 border border-gray-800 px-3 py-1.5 rounded-lg transition-colors">
           Sign out
         </button>
@@ -166,16 +188,17 @@ export default function ProfilePage() {
       {tab === "overview" && (
         <>
           {/* Stats grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             {[
               { label: "Contests Played", value: profile.contests_played,                            color: "text-white"       },
-              { label: "Best Score",       value: profile.best_score || "—",                          color: "text-emerald-400" },
+              { label: "Best Score",       value: profile.best_score > 0 ? profile.best_score : "—",  color: "text-emerald-400" },
               { label: "Avg Score",        value: avgScore || "—",                                    color: "text-blue-400"    },
               { label: "Avg Time",         value: avgTime ? formatTime(avgTime) : "—",                color: "text-violet-400"  },
               { label: "Best Time",        value: bestTime ? formatTime(bestTime) : "—",              color: "text-cyan-400"    },
               { label: "No-Hint Solves",   value: noHintSolves,                                       color: "text-amber-400"   },
               { label: "Hard Solved",      value: hardSolves,                                         color: "text-red-400"     },
-              { label: "Streak",           value: profile.streak > 1 ? `${profile.streak} 🔥` : "—", color: profile.streak > 1 ? "text-orange-400" : "text-gray-500" },
+              { label: "Streak", value: (() => { const s = Math.max(profile.streak, localStreak); return s >= 1 ? `${s} 🔥` : "—" })(), color: Math.max(profile.streak, localStreak) >= 1 ? "text-orange-400" : "text-gray-500" },
+              { label: "Coins",            value: coins > 0 ? `🪙 ${coins}` : "0",                         color: "text-amber-400"   },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-[#0d0d0d] border border-gray-800/60 rounded-xl p-4 text-center">
                 <p className={`text-xl font-bold ${color}`}>{value}</p>
@@ -185,7 +208,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Rating sparkline */}
-          {ratingHistory.length >= 2 ? (
+          {ratingHistory.length >= 1 ? (
             <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5 mb-4">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-[12px] font-semibold text-white">Rating History</p>
@@ -206,8 +229,8 @@ export default function ProfilePage() {
                   {(() => {
                     const n = ratingHistory.length
                     const pts = ratingHistory.map((v, i) => ({
-                      x: `${(i / (n - 1)) * 100}%`,
-                      y: sparkH - ((v - sparkMin) / (sparkMax - sparkMin)) * sparkH + 12
+                      x: n === 1 ? "50%" : `${(i / (n - 1)) * 100}%`,
+                      y: sparkH - ((sparkMax - sparkMin) > 0 ? ((v - sparkMin) / (sparkMax - sparkMin)) * sparkH : sparkH / 2) + 12
                     }))
                     const lineD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")
                     const areaD = `${lineD} L 100% ${sparkH + 12} L 0% ${sparkH + 12} Z`
@@ -230,7 +253,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5 mb-4 text-center py-8">
-              <p className="text-[12px] text-gray-600">Play at least 2 contests to see your rating history.</p>
+              <p className="text-[12px] text-gray-600">Play your first Daily Contest to see your rating history.</p>
             </div>
           )}
 

@@ -3,42 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/AuthContext"
 import AuthModal from "@/components/AuthModal"
-
-// ── Coin system ───────────────────────────────────────────────────────────────
-function getCoins(): number {
-  try { return Number(localStorage.getItem("cv_coins") ?? "0") } catch { return 0 }
-}
-function addCoins(n: number) {
-  const c = getCoins() + n
-  localStorage.setItem("cv_coins", String(c))
-  return c
-}
-function spendCoins(n: number): boolean {
-  const c = getCoins()
-  if (c < n) return false
-  localStorage.setItem("cv_coins", String(c - n))
-  return true
-}
-
-// ── Owned hints ───────────────────────────────────────────────────────────────
-interface OwnedHint { id: string; name: string; uses: number; purchasedAt: string }
-function getOwned(): OwnedHint[] {
-  try { return JSON.parse(localStorage.getItem("cv_owned_hints") ?? "[]") } catch { return [] }
-}
-function saveOwned(items: OwnedHint[]) {
-  localStorage.setItem("cv_owned_hints", JSON.stringify(items))
-}
-
-// ── Transaction history ───────────────────────────────────────────────────────
-interface Tx { label: string; amount: number; date: string }
-function getTxHistory(): Tx[] {
-  try { return JSON.parse(localStorage.getItem("cv_tx_history") ?? "[]") } catch { return [] }
-}
-function addTx(tx: Tx) {
-  const h = getTxHistory()
-  h.unshift(tx)
-  localStorage.setItem("cv_tx_history", JSON.stringify(h.slice(0, 20)))
-}
+import { getCoins, spendCoins, getOwned, saveOwned, getTxHistory, addTx, useItem, hasItem, type OwnedHint, type Tx } from "@/lib/inventory"
 
 // ── Shop items ────────────────────────────────────────────────────────────────
 const SHOP_ITEMS = [
@@ -86,12 +51,18 @@ const SHOP_ITEMS = [
 
 // ── Earning ways ──────────────────────────────────────────────────────────────
 const EARN_WAYS = [
-  { icon: "🏆", label: "Win Daily Contest",       coins: 200 },
-  { icon: "⚡", label: "Speed Round — 10+ solved", coins: 100 },
-  { icon: "🔥", label: "7-Day Streak",             coins: 150 },
-  { icon: "🎯", label: "Solve Hard puzzle",         coins: 75  },
-  { icon: "📚", label: "Complete all Easy puzzles", coins: 50  },
-  { icon: "🌟", label: "First solve of the day",    coins: 25  },
+  { icon: "📅", label: "Complete Daily Contest (base)",   coins: 50  },
+  { icon: "💯", label: "Contest score 900+",              coins: 150 },
+  { icon: "⭐", label: "Contest score 700+",              coins: 75  },
+  { icon: "💡", label: "No hints used in Contest",        coins: 50  },
+  { icon: "🔥", label: "3-day streak bonus",              coins: 50  },
+  { icon: "🔥", label: "7-day streak bonus",              coins: 150 },
+  { icon: "⚡", label: "Speed Round — per puzzle solved", coins: 10  },
+  { icon: "⚡", label: "Speed Round — 10+ solved bonus",  coins: 100 },
+  { icon: "⚡", label: "Speed Round — 15+ solved bonus",  coins: 150 },
+  { icon: "🎯", label: "Challenge — Easy puzzle",         coins: 5   },
+  { icon: "🎯", label: "Challenge — Medium puzzle",       coins: 15  },
+  { icon: "🎯", label: "Challenge — Hard puzzle",         coins: 30  },
 ]
 
 const COLOR_MAP: Record<string, string> = {
@@ -120,8 +91,23 @@ export default function MarketplacePage() {
   const [tab,       setTab]       = useState<"shop"|"inventory"|"earn">("shop")
   const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
 
+  const syncFromStorage = () => {
+    setCoins(getCoins())
+    setOwned(getOwned())
+    setHistory(getTxHistory())
+  }
+
   useEffect(() => {
-    setCoins(getCoins()); setOwned(getOwned()); setHistory(getTxHistory())
+    syncFromStorage()
+    window.addEventListener("focus", syncFromStorage)
+    window.addEventListener("storage", syncFromStorage)
+    // Same-tab coin updates from contest/challenge/speed
+    window.addEventListener("cv_coins_changed", syncFromStorage)
+    return () => {
+      window.removeEventListener("focus", syncFromStorage)
+      window.removeEventListener("storage", syncFromStorage)
+      window.removeEventListener("cv_coins_changed", syncFromStorage)
+    }
   }, [])
 
   const showToast = (msg: string, ok: boolean) => {
@@ -148,13 +134,21 @@ export default function MarketplacePage() {
     showToast(`${item.name} added to inventory!`, true)
   }
 
-  // Dev: add coins for testing
-  const handleEarnDemo = (amount: number) => {
-    const c = addCoins(amount)
-    setCoins(c)
-    addTx({ label: `Earned coins`, amount, date: new Date().toLocaleDateString() })
+  const handleUse = (item: OwnedHint) => {
+    const shopItem = SHOP_ITEMS.find(s => s.id === item.id)
+    if (!shopItem) return
+    // Items that need to be used in-game show instructions
+    const inGameItems = ["hint_skip","hint_freeze","hint_double","hint_shield"]
+    if (inGameItems.includes(item.id)) {
+      showToast(`Use ${item.name} while playing Contest or Challenge`, false)
+      return
+    }
+    // Items that can show info immediately
+    if (!hasItem(item.id)) { showToast("No uses remaining!", false); return }
+    useItem(item.id)
+    setOwned(getOwned())
     setHistory(getTxHistory())
-    showToast(`+${amount} coins earned!`, true)
+    showToast(`${item.name} used! Check the result.`, true)
   }
 
   return (
@@ -260,13 +254,17 @@ export default function MarketplacePage() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between mt-3">
-                      <span className="text-[12px] text-gray-500">{item.uses} uses remaining</span>
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-1.5">
                         {Array.from({ length: Math.min(item.uses, 5) }).map((_, i) => (
                           <div key={i} className="w-2 h-2 rounded-full bg-emerald-500" />
                         ))}
                         {item.uses > 5 && <span className="text-[10px] text-gray-600">+{item.uses - 5}</span>}
+                        <span className="text-[11px] text-gray-500 ml-1">{item.uses} left</span>
                       </div>
+                      <button onClick={() => handleUse(item)}
+                        className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 border border-blue-700/30 hover:border-blue-500/50 px-3 py-1 rounded-lg transition-colors">
+                        Use
+                      </button>
                     </div>
                   </div>
                 )
@@ -316,18 +314,9 @@ export default function MarketplacePage() {
             ))}
           </div>
 
-          {/* Dev: test earn button */}
           <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5">
-            <p className="text-[12px] font-semibold text-white mb-1">🧪 Test Earn Coins</p>
-            <p className="text-[11px] text-gray-600 mb-4">Add coins to test the marketplace (dev mode).</p>
-            <div className="flex gap-2 flex-wrap">
-              {[25, 50, 100, 200].map(amt => (
-                <button key={amt} onClick={() => handleEarnDemo(amt)}
-                  className="px-4 py-2 rounded-xl text-[12px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-colors">
-                  +{amt} 🪙
-                </button>
-              ))}
-            </div>
+            <p className="text-[12px] font-semibold text-white mb-1">💡 How coins work</p>
+            <p className="text-[11px] text-gray-500 leading-relaxed">Coins are earned automatically when you complete activities. They are stored locally in your browser. Purchased items are usable directly in Daily Contest and Cipher Challenge.</p>
           </div>
         </div>
       )}

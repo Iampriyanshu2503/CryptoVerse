@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/lib/AuthContext"
 import { supabase } from "@/lib/supabase"
 import AuthModal from "@/components/AuthModal"
@@ -23,7 +23,7 @@ function getPuzzle(seed: number) {
   return BATTLE_PUZZLES[seed % BATTLE_PUZZLES.length]
 }
 
-type BattleStatus = "idle" | "waiting" | "ready" | "playing" | "won" | "lost" | "draw"
+type BattleStatus = "idle" | "waiting" | "ready" | "playing" | "waiting_result" | "won" | "lost" | "draw"
 
 interface Room {
   id:           string
@@ -86,12 +86,23 @@ export default function BattlePage() {
         const opDone = isP1 ? r.p2_done : r.p1_done
         if (opDone) setOpStatus("done")
 
-        // Both done → resolve winner
+        // Both done → resolve winner (handles waiting_result state too)
         if (r.winner) {
           clearInterval(timerRef.current)
           if (r.winner === "draw") setStatus("draw")
           else if (r.winner === profile?.username) setStatus("won")
           else setStatus("lost")
+        }
+        // Opponent just finished while we're waiting_result → check winner
+        const weAreDone = isP1 ? r.p1_done : r.p2_done
+        if (weAreDone && opDone && !r.winner) {
+          // Both done but winner not set yet — set it now
+          const myTime  = isP1 ? r.p1_time : r.p2_time
+          const theirTime = isP1 ? r.p2_time : r.p1_time
+          let winner = "draw"
+          if (theirTime === null || (myTime !== null && myTime < theirTime)) winner = profile?.username ?? "draw"
+          else if (myTime === null || myTime > theirTime) winner = isP1 ? (r.player2 ?? "draw") : r.player1
+          supabase.from("battle_rooms").update({ winner }).eq("id", r.id)
         }
       })
       .subscribe()
@@ -106,21 +117,16 @@ export default function BattlePage() {
     setCreating(true)
     try {
       const seed = Math.floor(Math.random() * BATTLE_PUZZLES.length)
-
-      const { data, error } = await supabase.from("battle_rooms").insert({
-        puzzle_seed: seed,
-        player1:     profile.username,
-        player2:     null,
-        p1_done:     false, p2_done: false,
-        p1_time:     null,  p2_time: null,
-        winner:      null,
-      }).select().single()
-
-      if (error) { setCreateErr(`${error.message} [${error.code}]`); return }
-      if (!data)  { setCreateErr("No data returned — check Supabase setup."); return }
-      setRoom(data as Room); setRoomId(data.id); setStatus("waiting")
+      const res  = await fetch("/api/auth/battle", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "create", player1: profile.username, puzzle_seed: seed }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) { setCreateErr(json.error ?? "Failed to create room"); return }
+      setRoom(json.room as Room); setRoomId(json.room.id); setStatus("waiting")
     } catch (e: any) {
-      setCreateErr(e?.message ?? "Unknown error")
+      setCreateErr(e?.message ?? "Network error")
     } finally {
       setCreating(false)
     }
@@ -138,20 +144,14 @@ export default function BattlePage() {
     if (code.length < 6) { setJoinErr("Please enter a valid room code."); return }
     setJoining(true)
     try {
-      const { data: rows, error: findErr } = await supabase
-        .from("battle_rooms").select("*").is("player2", null)
-        .order("created_at", { ascending: false }).limit(50)
-      if (findErr) { setJoinErr(`Error: ${findErr.message}`); return }
-      const target = (rows ?? []).find((r: any) =>
-        r.id.replace(/-/g, "").toUpperCase().startsWith(code)
-      )
-      if (!target) { setJoinErr("Room not found or already full."); return }
-
-      const { data, error } = await supabase
-        .from("battle_rooms").update({ player2: profile.username })
-        .eq("id", target.id).is("player2", null).select().single()
-      if (error || !data) { setJoinErr(error?.message ?? "Failed to join room."); return }
-      setRoom(data as Room); setRoomId(data.id)
+      const res  = await fetch("/api/auth/battle", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "join", player2: profile.username, code }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) { setJoinErr(json.error ?? "Failed to join room"); return }
+      setRoom(json.room as Room); setRoomId(json.room.id)
       setStatus("playing")
       startRef.current = Date.now()
       timerRef.current = setInterval(() => {
@@ -166,39 +166,67 @@ export default function BattlePage() {
   }
 
   // ── Submit answer ───────────────────────────────────────────────────────────
-  const handleSubmit = useCallback(async () => {
-    if (!puzzle || !room || !profile) return
-    if (answer.trim().toUpperCase() !== puzzle.plaintext.toUpperCase()) {
+  // Use refs so values are always fresh (no stale closure)
+  const answerRef  = useRef(answer)
+  const elapsedRef = useRef(elapsed)
+  const roomRef    = useRef(room)
+  answerRef.current  = answer
+  elapsedRef.current = elapsed
+  roomRef.current    = room
+
+  const handleSubmit = async () => {
+    const currentAnswer  = answerRef.current
+    const currentElapsed = elapsedRef.current
+    const currentRoom    = roomRef.current
+    if (!puzzle || !currentRoom || !profile) return
+    if (currentAnswer.trim().toUpperCase() !== puzzle.plaintext.toUpperCase()) {
       setWrong(true); setShake(true)
       setTimeout(() => { setWrong(false); setShake(false) }, 500)
       return
     }
     clearInterval(timerRef.current)
-    const time = elapsed
-    const isP1 = room.player1 === profile.username
+    const time = currentElapsed
+    const isP1 = currentRoom.player1 === profile.username
 
     // Mark self as done
     const update = isP1
       ? { p1_done: true, p1_time: time }
       : { p2_done: true, p2_time: time }
 
-    await supabase.from("battle_rooms").update(update).eq("id", room.id)
+    await supabase.from("battle_rooms").update(update).eq("id", currentRoom.id)
 
-    // Check if both done → determine winner
-    const opDone = isP1 ? room.p2_done : room.p1_done
+    // Check if both done → determine winner immediately (don't wait for realtime)
+    const opDone = isP1 ? currentRoom.p2_done : currentRoom.p1_done
     if (opDone) {
-      const opTime = isP1 ? room.p2_time : room.p1_time
+      const opTime = isP1 ? currentRoom.p2_time : currentRoom.p1_time
       let winner = "draw"
       if (opTime === null || time < opTime) winner = profile.username
-      else if (time > opTime) winner = isP1 ? room.player2! : room.player1
-      await supabase.from("battle_rooms").update({ winner }).eq("id", room.id)
+      else if (time > opTime) winner = isP1 ? currentRoom.player2! : currentRoom.player1
+      await supabase.from("battle_rooms").update({ winner }).eq("id", currentRoom.id)
+      // Set result immediately without waiting for realtime
+      if (winner === "draw") setStatus("draw")
+      else if (winner === profile.username) setStatus("won")
+      else setStatus("lost")
+    } else {
+      // Opponent hasn't finished yet — show waiting state
+      setStatus("waiting_result" as any)
     }
-  }, [puzzle, room, profile, answer, elapsed])
+  }
 
   const cleanup = () => {
     clearInterval(timerRef.current)
     setStatus("idle"); setRoom(null); setRoomId(null)
     setAnswer(""); setElapsed(0); setOpStatus("thinking")
+  }
+
+  const fallbackCopy = (text: string) => {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none"
+    document.body.appendChild(ta)
+    ta.focus(); ta.select()
+    try { document.execCommand("copy") } catch {}
+    document.body.removeChild(ta)
   }
 
   // ── SQL reminder ─────────────────────────────────────────────────────────────
@@ -293,7 +321,12 @@ grant all on public.battle_rooms to authenticated, anon;`
       <div className="bg-gray-900/80 border border-blue-500/30 rounded-2xl px-6 py-4 mb-6 flex items-center justify-between">
         <span className="font-mono text-[20px] font-black text-blue-400 tracking-widest">{roomId?.replace(/-/g,"").slice(0, 8).toUpperCase()}</span>
         <button onClick={() => {
-            navigator.clipboard.writeText(roomId?.replace(/-/g,"").slice(0, 8).toUpperCase() ?? "")
+            const code = roomId?.replace(/-/g,"").slice(0, 8).toUpperCase() ?? ""
+            if (navigator.clipboard && window.isSecureContext) {
+              navigator.clipboard.writeText(code).catch(() => fallbackCopy(code))
+            } else {
+              fallbackCopy(code)
+            }
             setCopied(true); setTimeout(() => setCopied(false), 2000)
           }}
           className={`text-[11px] transition-colors font-medium ${copied ? "text-emerald-400" : "text-gray-600 hover:text-white"}`}>
@@ -352,6 +385,16 @@ grant all on public.battle_rooms to authenticated, anon;`
         <button onClick={handleSubmit}
           className="px-5 py-3 rounded-xl font-bold text-[13px] bg-blue-600 hover:bg-blue-500 text-white transition-colors">✓</button>
       </div>
+    </div>
+  )
+
+  // ── Waiting for opponent to finish ─────────────────────────────────────────
+  if (status === "waiting_result") return (
+    <div className="p-8 max-w-lg mx-auto text-center">
+      <div className="text-5xl mb-4 animate-pulse">⏳</div>
+      <h2 className="text-xl font-bold text-white mb-2">Answer submitted!</h2>
+      <p className="text-[13px] text-gray-500 mb-2">Waiting for your opponent to finish...</p>
+      <p className="text-[12px] text-emerald-400">Your time: {elapsed}s ✓</p>
     </div>
   )
 

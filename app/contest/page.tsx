@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext"
 import { useGame } from "@/lib/GameContext"
 import { supabase, type LeaderboardRow, type AllTimeRow } from "@/lib/supabase"
+import { getOwned, useItem, hasItem, ITEM, addCoins, getCoins, setCoinsVal } from "@/lib/inventory"
 import AuthModal from "@/components/AuthModal"
 
 // ─── Puzzle pool ───────────────────────────────────────────────────────────────
@@ -378,7 +379,7 @@ function useCountdown() {
 type Screen = "lobby" | "playing" | "result"
 
 export default function ContestPage() {
-  const { user, profile, signOut, refreshProfile } = useAuth()
+  const { user, profile, signOut, refreshProfile, updateProfileLocal } = useAuth()
   const { setGameActive, requestLeave } = useGame()
   const [showAuth, setShowAuth]       = useState(false)
   const [authTab, setAuthTab]         = useState<"login"|"register">("login")
@@ -388,6 +389,11 @@ export default function ContestPage() {
   const [hintsRevealed, setHintsRevealed] = useState(0)
   const [wrong, setWrong]             = useState(false)
   const [shake, setShake]             = useState(false)
+  const [frozenSecs, setFrozenSecs]   = useState(0)
+  const [shielded,   setShielded]     = useState(false)
+  const [doubleNext, setDoubleNext]   = useState(false)
+  const [freqMap,    setFreqMap]      = useState<[string,number][]>([])
+  const [inventory,  setInventory]    = useState<ReturnType<typeof getOwned>>([])
   const [score, setScore]             = useState(0)
   const [ratingDelta, setRatingDelta] = useState(0)
   const [boardTab, setBoardTab]       = useState<"today"|"alltime">("today")
@@ -396,6 +402,7 @@ export default function ContestPage() {
   const [alreadyPlayed, setAlreadyPlayed] = useState(false)
   const [submitting, setSubmitting]   = useState(false)
   const [submitted, setSubmitted]     = useState(false)
+  const [coinsEarned, setCoinsEarned] = useState(0)
   const [boardLoading, setBoardLoading] = useState(true)
   const countdown = useCountdown()
 
@@ -404,7 +411,9 @@ export default function ContestPage() {
   const { elapsed: seconds, start: startTimer, stop: stopTimer, reset: resetTimer, resumeRAF, pauseRAF } = usePersistentTimer(timerKey)
 
   // ── Load leaderboard ────────────────────────────────────────────────────────
-  const loadBoard = useCallback(async () => {
+  const boardLoadedRef = useRef(false)
+  const loadBoard = useCallback(async (force = false) => {
+    if (boardLoadedRef.current && !force) return
     setBoardLoading(true)
     const today = getTodayStr()
     const [{ data: td }, { data: at }] = await Promise.all([
@@ -414,9 +423,16 @@ export default function ContestPage() {
     setTodayBoard((td ?? []) as LeaderboardRow[])
     setAllTimeBoard((at ?? []) as AllTimeRow[])
     setBoardLoading(false)
+    boardLoadedRef.current = true
   }, [])
 
   useEffect(() => { loadBoard() }, [loadBoard])
+  useEffect(() => { setTodayStr(getTodayStr()) }, [])
+  useEffect(() => {
+    const inv = getOwned(); setInventory(inv)
+    if (inv.some(i => i.id === ITEM.DOUBLE && i.uses > 0)) setDoubleNext(true)
+    if (inv.some(i => i.id === ITEM.SHIELD && i.uses > 0)) setShielded(true)
+  }, [])
 
   // Always clear game lock on unmount
   useEffect(() => {
@@ -428,18 +444,28 @@ export default function ContestPage() {
   useEffect(() => {
     if (!user) return
     supabase.from("contest_entries").select("id").eq("user_id", user.id).eq("puzzle_date", getTodayStr()).maybeSingle()
-      .then(({ data }) => setAlreadyPlayed(!!data))
+      .then(({ data }) => {
+        if (data) {
+          setAlreadyPlayed(true)
+          setScreen("lobby")   // force back to lobby if already solved
+          sessionStorage.removeItem(timerKey)  // clear stale timer
+        }
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   // ── Restore screen state if timer is running (navigated away mid-game) ─────
   useEffect(() => {
     const saved = sessionStorage.getItem(timerKey)
-    if (saved) {
+    if (saved && !alreadyPlayed) {
       setScreen("playing")
       setGameActive(true, "Daily Contest")
+    } else if (saved && alreadyPlayed) {
+      // Already solved — clear stale timer from sessionStorage
+      sessionStorage.removeItem(timerKey)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerKey])
+  }, [timerKey, alreadyPlayed])
 
   // ── Start/stop RAF based on active screen ───────────────────────────────────
   useEffect(() => {
@@ -462,24 +488,85 @@ export default function ContestPage() {
     setGameActive(true, "Daily Contest")
   }
 
+  const refreshInv = () => setInventory(getOwned())
+
+  const activateFreeze = () => {
+    if (!hasItem(ITEM.FREEZE)) return
+    useItem(ITEM.FREEZE); refreshInv(); setFrozenSecs(15); pauseRAF()
+    const iv = setInterval(() => setFrozenSecs(p => { if(p<=1){clearInterval(iv);resumeRAF();return 0} return p-1 }), 1000)
+  }
+  const activateReveal = () => {
+    if (!hasItem(ITEM.REVEAL)) return
+    useItem(ITEM.REVEAL); refreshInv(); setAttempt(puzzle.plaintext[0])
+  }
+  const activateCipherID = () => {
+    if (!hasItem(ITEM.CIPHER)) return
+    useItem(ITEM.CIPHER); refreshInv(); setHintsRevealed(p => Math.max(p, 1))
+  }
+  const activateKeyFrag = () => {
+    if (!hasItem(ITEM.KEY)) return
+    useItem(ITEM.KEY); refreshInv(); setHintsRevealed(p => Math.max(p, 2))
+  }
+  const activateFreqMap = () => {
+    if (!hasItem(ITEM.FREQ)) return
+    useItem(ITEM.FREQ); refreshInv()
+    const freq: Record<string,number> = {}
+    for (const ch of puzzle.ciphertext.replace(/[^A-Za-z]/g,"").toUpperCase()) freq[ch]=(freq[ch]??0)+1
+    setFreqMap(Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,10))
+  }
+
   const checkAnswer = () => {
     const clean = (s: string) => s.toUpperCase().replace(/\s+/g," ").trim()
     if (clean(attempt) === clean(puzzle.plaintext)) {
       stopTimer()
-      const s     = calcScore(puzzle.difficulty, seconds, hintsRevealed)
-      const delta = calcRatingDelta(puzzle.difficulty, seconds, hintsRevealed)
+      let s     = calcScore(puzzle.difficulty, seconds, hintsRevealed)
+      let delta = calcRatingDelta(puzzle.difficulty, seconds, hintsRevealed)
+      if (doubleNext && hasItem(ITEM.DOUBLE)) {
+        useItem(ITEM.DOUBLE); setDoubleNext(false); refreshInv()
+        s = Math.min(s * 2, 1000); delta = delta * 2
+      }
       setScore(s)
       setRatingDelta(delta)
       setScreen("result")
       setGameActive(false)
+
+      // ── Save coins & streak IMMEDIATELY to localStorage (no server needed) ──
+      try {
+        const today     = getTodayStr()
+        const lastKey   = "cv_last_played"
+        const streakKey = "cv_streak"
+        const lastPlayed  = localStorage.getItem(lastKey) ?? ""
+        const curStreak   = Number(localStorage.getItem(streakKey) ?? "0")
+        const yesterday   = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+        const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,"0")}-${String(yesterday.getDate()).padStart(2,"0")}`
+        const newStreak = lastPlayed === yStr ? curStreak + 1 : lastPlayed === today ? curStreak : 1
+        localStorage.setItem(streakKey, String(newStreak))
+        localStorage.setItem(lastKey, today)
+
+        // Coins
+        let earned = 50
+        if (s >= 900) earned += 150
+        else if (s >= 700) earned += 75
+        else if (s >= 500) earned += 25
+        if (hintsRevealed === 0) earned += 50
+        if (newStreak >= 7) earned += 150
+        else if (newStreak >= 3) earned += 50
+        addCoins(earned)  // dispatches cv_coins_changed event
+        setCoinsEarned(earned)
+      } catch {}
+
       submitResult(s, delta)
     } else {
+      if (shielded && hasItem(ITEM.SHIELD)) {
+        useItem(ITEM.SHIELD); setShielded(false); refreshInv()
+      }
       setWrong(true); setShake(true)
       setTimeout(() => { setWrong(false); setShake(false) }, 600)
     }
   }
 
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [todayStr,  setTodayStr]  = useState("")
   // Hard-cap: if submitting is still true after 12s, force-reset it
   const submittingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
@@ -513,50 +600,80 @@ export default function ContestPage() {
     submittingTimerRef.current = setTimeout(() => {
       setSubmitting(false)
       setSaveError("Request timed out. Check your connection and retry.")
-    }, 12000)
+    }, 30000)
 
     try {
       const today        = getTodayStr()
       const ratingBefore = profile.rating
       const ratingAfter  = ratingBefore + finalDelta
-      const yesterday    = new Date(); yesterday.setDate(yesterday.getDate() - 1)
-      const yStr         = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,"0")}-${String(yesterday.getDate()).padStart(2,"0")}`
-      const newStreak    = profile.last_played === yStr ? profile.streak + 1 : 1
+      // Streak: increment if last_played was yesterday, reset to 1 otherwise
+      // Compare as local date strings to avoid timezone issues
+      const todayDate     = new Date()
+      const yesterdayDate = new Date(todayDate); yesterdayDate.setDate(todayDate.getDate() - 1)
+      const yStr = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth()+1).padStart(2,"0")}-${String(yesterdayDate.getDate()).padStart(2,"0")}`
+      const newStreak = profile.last_played === yStr
+        ? profile.streak + 1
+        : profile.last_played === today
+          ? profile.streak  // already played today, don't reset
+          : 1               // missed a day, reset
 
-      const { error: insertErr } = await supabase.from("contest_entries").insert({
-        user_id:       user.id,
-        username:      profile.username,
-        puzzle_date:   today,
-        puzzle_id:     puzzle.id,
-        score:         finalScore,
-        time_seconds:  seconds,
-        hints_used:    hintsRevealed,
-        difficulty:    puzzle.difficulty,
-        rating_before: ratingBefore,
-        rating_after:  ratingAfter,
+      const payload = JSON.stringify({
+        user_id:         user.id,
+        username:        profile.username,
+        puzzle_date:     today,
+        puzzle_id:       puzzle.id,
+        score:           finalScore,
+        time_seconds:    seconds,
+        hints_used:      hintsRevealed,
+        difficulty:      puzzle.difficulty,
+        rating_before:   ratingBefore,
+        rating_after:    ratingAfter,
+        contests_played: profile.contests_played + 1,
+        best_score:      Math.max(profile.best_score, finalScore),
+        streak:          newStreak,
+        last_played:     today,
       })
 
-      if (insertErr && insertErr.code !== "23505") {
-        setSaveError(`${insertErr.message} [${insertErr.code}]`)
-        return
+      // Auto-retry up to 3 times with increasing timeout
+      let res: Response | null = null
+      let lastErr = ""
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const controller = new AbortController()
+        const fetchTimeout = setTimeout(() => controller.abort(), attempt * 10000) // 10s, 20s, 30s
+        try {
+          res = await fetch("/api/auth/contest", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            signal: controller.signal, body: payload,
+          })
+          clearTimeout(fetchTimeout)
+          break // success — exit retry loop
+        } catch (err: any) {
+          clearTimeout(fetchTimeout)
+          lastErr = err?.message ?? "Network error"
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt)) // wait 1s, 2s between retries
+        }
       }
+      if (!res) { setSaveError(`Failed after 3 attempts: ${lastErr}`); return }
+      const json = await res.json()
+      if (!res.ok) { setSaveError(`${json.error} [${json.code ?? res.status}]`); return }
 
-      const { error: updateErr } = await supabase.from("profiles").update({
+      // Clear safety timer — save succeeded
+      clearTimeout(submittingTimerRef.current)
+
+      // Update profile locally right away — no DB round-trip needed
+      updateProfileLocal({
         rating:          ratingAfter,
         contests_played: profile.contests_played + 1,
         best_score:      Math.max(profile.best_score, finalScore),
         streak:          newStreak,
         last_played:     today,
-      }).eq("id", user.id)
-
-      if (updateErr) {
-        setSaveError(`${updateErr.message} [${updateErr.code}]`)
-        return
-      }
-
-      await Promise.allSettled([refreshProfile(), loadBoard()])
+      })
       setAlreadyPlayed(true)
       setSubmitted(true)
+      // Sync with DB in background
+      Promise.allSettled([refreshProfile(), loadBoard(true)])
+
+      // coins awarded in checkAnswer above
     } catch (e: any) {
       setSaveError(e?.message ?? "Unknown error — check console")
     } finally {
@@ -625,7 +742,7 @@ export default function ContestPage() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
             </span>
-            <span className="text-[11px] text-blue-400 font-medium tracking-widest uppercase">Today — {getTodayStr()}</span>
+            <span className="text-[11px] text-blue-400 font-medium tracking-widest uppercase">Today — {todayStr}</span>
           </div>
           <div className="flex items-start justify-between mb-4">
             <div>
@@ -865,6 +982,62 @@ export default function ContestPage() {
         {wrong && <p className="text-red-400 text-[12px] mt-1.5">✗ Incorrect — try again</p>}
       </div>
 
+      {/* Power-ups bar */}
+      {inventory.some(i => i.uses > 0) && (
+        <div className="mb-4">
+          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Power-ups</p>
+          <div className="flex flex-wrap gap-2">
+            {hasItem(ITEM.FREEZE) && (
+              <button onClick={activateFreeze} disabled={frozenSecs>0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[11px] font-semibold hover:bg-cyan-500/20 transition-colors disabled:opacity-40">
+                ❄️ {frozenSecs > 0 ? `Frozen ${frozenSecs}s` : "Time Freeze"}
+              </button>
+            )}
+            {hasItem(ITEM.REVEAL) && (
+              <button onClick={activateReveal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 text-violet-400 text-[11px] font-semibold hover:bg-violet-500/20 transition-colors">
+                🔍 Letter Reveal
+              </button>
+            )}
+            {hasItem(ITEM.CIPHER) && (
+              <button onClick={activateCipherID}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-semibold hover:bg-amber-500/20 transition-colors">
+                🏷 Cipher ID
+              </button>
+            )}
+            {hasItem(ITEM.KEY) && (
+              <button onClick={activateKeyFrag}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold hover:bg-emerald-500/20 transition-colors">
+                🗝 Key Fragment
+              </button>
+            )}
+            {hasItem(ITEM.FREQ) && (
+              <button onClick={activateFreqMap}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-semibold hover:bg-pink-500/20 transition-colors">
+                📊 Freq Map
+              </button>
+            )}
+            {shielded && <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-400 text-[11px]">🛡 Shield Active</span>}
+            {doubleNext && <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px]">✨ 2× Points</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Frequency map display */}
+      {freqMap.length > 0 && (
+        <div className="mb-4 bg-pink-900/10 border border-pink-700/20 rounded-xl p-3">
+          <p className="text-[10px] text-pink-400 uppercase tracking-widest mb-2">Letter Frequency</p>
+          <div className="flex gap-2 flex-wrap">
+            {freqMap.map(([ch, n]) => (
+              <div key={ch} className="text-center">
+                <div className="text-[13px] font-mono font-bold text-white">{ch}</div>
+                <div className="text-[10px] text-pink-400">{n}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-[11px] text-gray-600 uppercase tracking-wider">Hints</p>
@@ -960,7 +1133,7 @@ export default function ContestPage() {
             </svg>
             <div>
               <p className="text-[12px] font-semibold text-white">Saving to leaderboard…</p>
-              <p className="text-[11px] text-gray-600">Updating your rating automatically</p>
+              <p className="text-[11px] text-gray-600">This can take up to 10s on first save of the day</p>
             </div>
           </div>
         ) : saveError ? (
@@ -982,6 +1155,7 @@ export default function ContestPage() {
             <div>
               <p className="text-[13px] font-semibold text-emerald-400">Saved to global leaderboard!</p>
               {userTodayRank > 0 && <p className="text-[11px] text-gray-500 mt-0.5">You ranked #{userTodayRank} today</p>}
+              {coinsEarned > 0 && <p className="text-[11px] text-amber-400 mt-0.5">🪙 +{coinsEarned} coins earned!</p>}
             </div>
           </div>
         ) : null}

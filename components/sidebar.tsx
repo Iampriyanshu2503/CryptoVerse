@@ -60,6 +60,17 @@ const navItems = [
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2.5 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
     ],
   },
+  {
+    group: "Earn & Compete",
+    items: [
+      { label: "Pricing & Pro",     href: "/pricing",      tag: "💎",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1l2 4h4l-3.2 2.8 1.2 4-4-2.4-4 2.4 1.2-4L1.5 5h4z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg> },
+      { label: "Tournaments",       href: "/tournaments",  tag: "🏆",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M5 1h5v5a2.5 2.5 0 01-5 0V1z" stroke="currentColor" strokeWidth="1.2"/><path d="M5 4H3.5a1.5 1.5 0 000 3H5M10 4h1.5a1.5 1.5 0 010 3H10" stroke="currentColor" strokeWidth="1.2"/><path d="M7.5 9v3M5.5 12h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Certificates",      href: "/certificates", tag: "🎓",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="2" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><circle cx="7.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.2"/><path d="M5.5 13.5l2-2 2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+    ],
+  },
 ]
 
 function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: () => void }) {

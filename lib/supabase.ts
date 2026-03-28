@@ -52,6 +52,10 @@ export interface Profile {
   twitter:         string | null
   discord:         string | null
   display_name:    string | null
+  // Monetization
+  is_pro:          boolean | null
+  pro_expires_at:  string | null
+  coins_purchased: number | null
 }
 
 export interface ContestEntry {

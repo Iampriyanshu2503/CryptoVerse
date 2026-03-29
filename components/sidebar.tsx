@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -141,16 +142,14 @@ function NavContent({ pathname, onNavClick }: { pathname: string; onNavClick?: (
 
 function LogoBlock() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M7 1.5L2 4.5v5l5 3 5-3v-5L7 1.5z" stroke="white" strokeWidth="1.3" strokeLinejoin="round"/>
-          <circle cx="7" cy="7" r="1.5" fill="white"/>
-        </svg>
+    <div className="flex items-center gap-2.5">
+      <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-900/30"
+        style={{ border:"1px solid rgba(96,165,250,0.2)" }}>
+        <Image src="/cryptoverse-logo.png" alt="CryptoVerse" width={32} height={32} className="w-full h-full object-cover"/>
       </div>
       <div>
-        <p className="text-[13px] font-semibold text-white tracking-tight leading-tight">CryptoVerse</p>
-        <p className="text-[10px] text-gray-600 leading-tight tracking-widest">SIMULATION LAB</p>
+        <p className="text-[13px] font-bold text-white tracking-tight leading-tight">CryptoVerse</p>
+        <p className="text-[10px] text-gray-600 leading-tight tracking-widest uppercase">Cipher Lab</p>
       </div>
     </div>
   )

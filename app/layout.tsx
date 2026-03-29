@@ -11,8 +11,13 @@ import AchievementToastWrapper from "@/components/AchievementToastWrapper"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "CryptoVerse — Cryptography Simulation Lab",
-  description: "Interactive cryptography education platform",
+  title: "CryptoVerse — Gamified Cryptography Challenges",
+  description: "Gamified cryptography challenges. Build your skills. Compete daily, battle friends, earn achievements.",
+  openGraph: {
+    title:       "CryptoVerse — Gamified Cryptography Challenges",
+    description: "Gamified cryptography challenges. Build your skills.",
+    images:      [{ url: "/cryptoverse-logo.png", width: 1200, height: 630 }],
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

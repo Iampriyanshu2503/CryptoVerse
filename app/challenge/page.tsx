@@ -9,7 +9,68 @@ import { triggerAchievementToast } from "@/components/AchievementToast"
 
 import { CHALLENGE_PUZZLES, type ChallengePuzzle as Puzzle } from "@/lib/puzzles-challenge"
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 type Screen = "select" | "playing" | "solved" | "leaderboard"
+
+interface LeaderEntry {
+  name: string; score: number; time: number
+  puzzle: string; difficulty: string; date: string
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const DIFF_COLORS = {
+  Easy:   { badge:"bg-emerald-500/10 text-emerald-400 border-emerald-500/20", text:"text-emerald-400" },
+  Medium: { badge:"bg-amber-500/10 text-amber-400 border-amber-500/20",       text:"text-amber-400"   },
+  Hard:   { badge:"bg-red-500/10 text-red-400 border-red-500/20",             text:"text-red-400"     },
+}
+
+const LS_KEY = "cv_challenge_lb"
+
+const CIPHER_COLORS: Record<string, string> = {
+  "Caesar":          "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  "ROT13":           "bg-gray-500/10 text-gray-400 border-gray-500/20",
+  "Atbash":          "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  "Vigenère":        "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  "Rail Fence":      "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  "Monoalphabetic":  "bg-pink-500/10 text-pink-400 border-pink-500/20",
+}
+
+function loadLeaderboard(): LeaderEntry[] {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") } catch { return [] }
+}
+function saveLeaderboard(lb: LeaderEntry[]) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(lb.slice(0, 100))) } catch {}
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatTime(s: number) {
+  const m = Math.floor(s / 60), sec = s % 60
+  return m > 0 ? `${m}m ${String(sec).padStart(2,"0")}s` : `${sec}s`
+}
+
+function calcScore(difficulty: string, _time: number, hints: number) {
+  const base    = difficulty === "Hard" ? 300 : difficulty === "Medium" ? 200 : 100
+  const hintPen = hints * (difficulty === "Hard" ? 50 : difficulty === "Medium" ? 25 : 10)
+  return Math.max(Math.round(base - hintPen), 10)
+}
+
+// ── useTimer hook ─────────────────────────────────────────────────────────────
+function useTimer(active: boolean) {
+  const [seconds, setSeconds] = useState(0)
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (active) {
+      ref.current = setInterval(() => setSeconds(s => s + 1), 1000)
+    } else {
+      if (ref.current) clearInterval(ref.current)
+    }
+    return () => { if (ref.current) clearInterval(ref.current) }
+  }, [active])
+
+  const reset = useCallback(() => setSeconds(0), [])
+  return { seconds, reset }
+}
 
 export default function ChallengePage() {
   const { user } = useAuth()
@@ -191,20 +252,9 @@ export default function ChallengePage() {
             </svg>
             Back to puzzles
           </button>
-          <div className="flex items-center gap-3">
-            {/* Timer */}
-            <div className="flex items-center gap-1.5 bg-gray-900/60 border border-gray-800/60 rounded-lg px-3 py-1.5">
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" className="text-gray-500">
-                <circle cx="5.5" cy="6" r="4" stroke="currentColor" strokeWidth="1.2"/>
-                <path d="M5.5 3.5V1.5M4 1.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                <path d="M5.5 6V4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-              <span className="text-[12px] font-mono text-white">{formatTime(seconds)}</span>
-            </div>
-            <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${dc.badge}`}>
-              {puzzle.difficulty}
-            </span>
-          </div>
+          <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${dc.badge}`}>
+            {puzzle.difficulty}
+          </span>
         </div>
 
         {/* Cipher badge */}
@@ -270,8 +320,8 @@ export default function ChallengePage() {
 
         {/* Score preview */}
         <div className="mt-5 bg-gray-900/40 border border-gray-800/40 rounded-xl p-3 flex items-center justify-between">
-          <span className="text-[11px] text-gray-600">Current score if solved now</span>
-          <span className="text-[14px] font-bold text-white">{calcScore(puzzle.difficulty, seconds, hintsRevealed)} pts</span>
+          <span className="text-[11px] text-gray-600">Score if solved now (hints only affect score)</span>
+          <span className="text-[14px] font-bold text-white">{calcScore(puzzle.difficulty, 0, hintsRevealed)} pts</span>
         </div>
       </div>
     )

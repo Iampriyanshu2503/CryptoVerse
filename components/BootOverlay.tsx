@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 
 const BOOT_LINES = [
   { t: "CRYPTOVERSE OS v2.0.1 — INITIALIZING...", d: 0    },
@@ -54,13 +55,16 @@ export default function BootOverlay() {
       }}
     >
       {/* Top chrome bar */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-800/60">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-800/60">
         <div className="w-3 h-3 rounded-full bg-red-500/80" />
         <div className="w-3 h-3 rounded-full bg-amber-500/80" />
         <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-        <span className="ml-3 font-mono text-[12px] text-gray-600 tracking-widest">
-          cryptoverse — boot
-        </span>
+        <div className="flex items-center gap-2 ml-3">
+          <div className="w-5 h-5 rounded-md overflow-hidden shrink-0">
+            <Image src="/cryptoverse-logo.png" alt="CryptoVerse" width={20} height={20} className="w-full h-full object-cover"/>
+          </div>
+          <span className="font-mono text-[12px] text-gray-600 tracking-widest">cryptoverse — boot</span>
+        </div>
       </div>
 
       {/* Terminal body */}

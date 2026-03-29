@@ -35,15 +35,15 @@ function formatTime(s: number) {
   return m > 0 ? `${m}m ${String(sec).padStart(2,"0")}s` : `${sec}s`
 }
 
-function calcScore(difficulty: string, time: number, hints: number) {
+function calcScore(difficulty: string, _time: number, hints: number) {
   const base = difficulty==="Easy"?100:difficulty==="Medium"?250:500
-  const hp = difficulty==="Easy"?10:difficulty==="Medium"?25:50
-  return Math.max(10, Math.round(base - time*0.5 - hints*hp))
+  const hp   = difficulty==="Easy"?10:difficulty==="Medium"?25:50
+  return Math.max(10, Math.round(base - hints*hp))
 }
 
-function calcRatingDelta(difficulty: string, time: number, hints: number) {
+function calcRatingDelta(difficulty: string, _time: number, hints: number) {
   const base = difficulty==="Easy"?20:difficulty==="Medium"?35:60
-  return Math.max(5, Math.round(base - Math.min(time*0.05,20) - hints*5))
+  return Math.max(5, Math.round(base - hints*5))
 }
 
 // ─── Rating tiers ──────────────────────────────────────────────────────────────
@@ -251,16 +251,35 @@ export default function ContestPage() {
 
   // ── Restore screen state if timer is running (navigated away mid-game) ─────
   useEffect(() => {
-    const saved = sessionStorage.getItem(timerKey)
-    if (saved && !alreadyPlayed) {
+    const saved      = sessionStorage.getItem(timerKey)
+    const savedHints = sessionStorage.getItem(timerKey + "_hints")
+    const hasSession = saved || savedHints   // ← either key means session exists
+
+    if (hasSession && !alreadyPlayed) {
+      const hints = Number(savedHints ?? 0)
+      setHintsRevealed(hints)
+      const savedAttempt = sessionStorage.getItem(timerKey + "_attempt") ?? ""
+      setAttempt(savedAttempt)
       setScreen("playing")
       setGameActive(true, "Daily Contest")
-    } else if (saved && alreadyPlayed) {
-      // Already solved — clear stale timer from sessionStorage
+    } else if (hasSession && alreadyPlayed) {
       sessionStorage.removeItem(timerKey)
+      sessionStorage.removeItem(timerKey + "_hints")
+      sessionStorage.removeItem(timerKey + "_attempt")
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerKey, alreadyPlayed])
+
+  // ── Persist hints immediately on every change ────────────────────────────────
+  useEffect(() => {
+    if (screen === "playing")
+      sessionStorage.setItem(timerKey + "_hints", String(hintsRevealed))
+  }, [hintsRevealed, screen, timerKey])
+
+  useEffect(() => {
+    if (screen === "playing")
+      sessionStorage.setItem(timerKey + "_attempt", attempt)
+  }, [attempt, screen, timerKey])
 
   // ── Start/stop RAF based on active screen ───────────────────────────────────
   useEffect(() => {
@@ -273,13 +292,13 @@ export default function ContestPage() {
 
   const startContest = () => {
     if (!user) { setAuthTab("login"); setShowAuth(true); return }
-    const alreadyRunning = !!sessionStorage.getItem(timerKey)
+    const alreadyRunning = !!sessionStorage.getItem(timerKey) || !!sessionStorage.getItem(timerKey + "_hints")
     if (!alreadyRunning) {
       resetTimer()
       setAttempt(""); setHintsRevealed(0); setWrong(false)
     }
     setScreen("playing")
-    startTimer() // call directly — no setTimeout delay
+    startTimer()
     setGameActive(true, "Daily Contest")
   }
 
@@ -296,11 +315,13 @@ export default function ContestPage() {
   }
   const activateCipherID = () => {
     if (!hasItem(ITEM.CIPHER)) return
-    useItem(ITEM.CIPHER); refreshInv(); setHintsRevealed(p => Math.max(p, 1))
+    useItem(ITEM.CIPHER); refreshInv()
+    setHintsRevealed(p => { const next = Math.max(p, 1); try { sessionStorage.setItem(timerKey + "_hints", String(next)) } catch {}; return next })
   }
   const activateKeyFrag = () => {
     if (!hasItem(ITEM.KEY)) return
-    useItem(ITEM.KEY); refreshInv(); setHintsRevealed(p => Math.max(p, 2))
+    useItem(ITEM.KEY); refreshInv()
+    setHintsRevealed(p => { const next = Math.max(p, 2); try { sessionStorage.setItem(timerKey + "_hints", String(next)) } catch {}; return next })
   }
   const activateFreqMap = () => {
     if (!hasItem(ITEM.FREQ)) return
@@ -756,15 +777,8 @@ export default function ContestPage() {
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Back (timer keeps running)
+          Back
         </button>
-        <div className="flex items-center gap-2 bg-gray-900/60 border border-gray-800/60 rounded-lg px-3 py-1.5">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-          </span>
-          <span className="text-[13px] font-mono font-bold text-white">{formatTime(seconds)}</span>
-        </div>
       </div>
 
       <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-6 mb-5">
@@ -871,7 +885,11 @@ export default function ContestPage() {
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Hint {i+1}</span>
                 {!revealed && i === hintsRevealed && (
-                  <button onClick={() => setHintsRevealed(i+1)}
+                  <button onClick={() => {
+                      const next = i + 1
+                      setHintsRevealed(next)
+                      try { sessionStorage.setItem(timerKey + "_hints", String(next)) } catch {}
+                    }}
                     className="text-[11px] text-gray-500 hover:text-amber-400 transition-colors">
                     Reveal (−{puzzle.difficulty==="Easy"?10:puzzle.difficulty==="Medium"?25:50} pts)
                   </button>

@@ -61,6 +61,8 @@ const navItems = [
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 11L5.5 7l3 2.5L12 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
       { label: "Profile",            href: "/profile",     tag: null,
         icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2.5 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+      { label: "Friends",            href: "/friends",     tag: "👥",
+        icon: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1.2"/><circle cx="10.5" cy="5" r="2" stroke="currentColor" strokeWidth="1.2"/><path d="M1 13c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M10.5 9c1.5 0 3.5 1 3.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
     ],
   },
   {

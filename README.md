@@ -97,6 +97,12 @@ Animated round-by-round breakdowns of block ciphers:
 
 2 secret achievements hidden until unlocked. Toast notifications appear on screen when a new badge is earned mid-game.
 
+### 👥 Friends (`/friends`)
+- Search players by username or display name
+- Send, accept, decline friend requests
+- Friends leaderboard — compare ratings with your friends
+- Challenge any friend directly to a Cipher Battle
+
 ### 👤 Profile (`/profile`)
 - Avatar upload (drag & drop or browse, max 2MB, stored in Supabase Storage)
 - Display name, bio, location
@@ -175,6 +181,10 @@ Run these SQL files **in order** in the Supabase SQL Editor:
 | 4 | `supabase_battle_rls_fix.sql` | Disable RLS on battle_rooms |
 | 5 | `supabase_coins_inventory.sql` | Adds coins + inventory columns to profiles |
 | 6 | `supabase_profile_extended.sql` | Adds avatar, bio, social links, storage bucket |
+| 7 | `supabase_monetization.sql` | Subscriptions, transactions, tournaments, certificates |
+| 8 | `supabase_friends.sql` | Friends/friendship system |
+| 9 | `supabase_security_fix.sql` | Security advisor fixes (views + RLS) |
+| 10 | `supabase_warnings_fix.sql` | Function search path fix |
 
 Optional — run only if you need to fix existing data:
 

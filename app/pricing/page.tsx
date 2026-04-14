@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/AuthContext"
 import { PLANS, COIN_BUNDLES, mockPurchase } from "@/lib/pro"
@@ -19,6 +19,11 @@ export default function PricingPage() {
   const [showAuth,   setShowAuth]   = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [billing,    setBilling]    = useState<"monthly"|"annual">("monthly")
+  const [coinsBalance, setCoinsBalance] = useState(0)
+
+  useEffect(() => {
+    try { setCoinsBalance(Number(localStorage.getItem("cv_coins") ?? "0")) } catch {}
+  }, [])
 
   const isPro = profile?.is_pro && profile?.pro_expires_at && new Date(profile.pro_expires_at) > new Date()
 
@@ -186,7 +191,7 @@ export default function PricingPage() {
           </div>
           {profile && (
             <div className="text-right">
-              <p className="text-[16px] font-black text-amber-400">🪙 {typeof window !== "undefined" ? localStorage.getItem("cv_coins") ?? "0" : "0"}</p>
+              <p className="text-[16px] font-black text-amber-400">🪙 {coinsBalance}</p>
               <p className="text-[9px] text-gray-600 uppercase tracking-wider">Current Balance</p>
             </div>
           )}

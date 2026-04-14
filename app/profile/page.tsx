@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ACHIEVEMENTS, RARITY, getUnlocked } from "@/lib/achievements"
 import { useAuth } from "@/lib/AuthContext"
 import { supabase, type ContestEntry } from "@/lib/supabase"

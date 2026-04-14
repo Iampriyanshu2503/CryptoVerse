@@ -786,6 +786,210 @@ export default function HomePage() {
           </div>
         </section>
 
+
+        {/* ╔══ STATS BAR ════════════════════════════════════════════════╗ */}
+        <section className="py-16 px-6 sm:px-10" style={{ borderTop:"1px solid rgba(255,255,255,0.05)", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+          <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
+            {[
+              { value:"200+", label:"Daily Puzzles",      color:"#60a5fa" },
+              { value:"27",   label:"Achievements",        color:"#fbbf24" },
+              { value:"6",    label:"Cipher Types",        color:"#4ade80" },
+              { value:"FREE", label:"To Get Started",      color:"#f472b6" },
+            ].map(({ value, label, color }) => (
+              <div key={label} className="group cursor-default">
+                <p className="text-[42px] font-black leading-none mb-2 transition-transform group-hover:scale-110"
+                  style={{ color, textShadow:`0 0 40px ${color}50` }}>{value}</p>
+                <p className="text-[11px] text-gray-600 uppercase tracking-[0.15em] font-semibold">{label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ╔══ FEATURES ════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-24 max-w-5xl mx-auto">
+          <div className="mb-14 text-center">
+            <span className="font-mono text-[10px] text-emerald-500 tracking-[0.3em] uppercase font-bold">// WHY CRYPTOVERSE</span>
+            <h2 className="mt-3 text-white font-black leading-tight"
+              style={{ fontSize:"clamp(28px,5vw,44px)" }}>
+              Not just another tutorial.<br/>
+              <span style={{ color:"#4ade80" }}>A full competitive platform.</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              {
+                icon:"⚔️", color:"#f87171", glow:"rgba(248,113,113,0.2)",
+                title:"Real Competition",
+                desc:"Daily contests with Elo ratings, global leaderboards, and live 1v1 cipher battles. Your ranking updates after every solve."
+              },
+              {
+                icon:"🔐", color:"#60a5fa", glow:"rgba(96,165,250,0.2)",
+                title:"Real Cryptography",
+                desc:"SHA-256, ECDSA, AES-128, RSA-OAEP — built with the browser's native Web Crypto API. No simulations, no shortcuts."
+              },
+              {
+                icon:"🏆", color:"#fbbf24", glow:"rgba(251,191,36,0.2)",
+                title:"Real Rewards",
+                desc:"Earn coins, unlock 27 achievement badges, buy power-ups, get verifiable certificates. Progress that actually means something."
+              },
+              {
+                icon:"⚡", color:"#a78bfa", glow:"rgba(167,139,250,0.2)",
+                title:"Speed Round",
+                desc:"60 seconds. Unlimited ciphers. How many can you solve? Your personal best is tracked and shown on your profile."
+              },
+              {
+                icon:"⛓", color:"#4ade80", glow:"rgba(74,222,128,0.2)",
+                title:"Blockchain Lab",
+                desc:"Mine real blocks with SHA-256, generate ECDSA wallets, send transactions, mint tokens — a complete guided blockchain tutorial."
+              },
+              {
+                icon:"👥", color:"#f472b6", glow:"rgba(244,114,182,0.2)",
+                title:"Friends & Social",
+                desc:"Add friends, compare ratings on a private leaderboard, and challenge them directly to battles. Cryptography is better together."
+              },
+            ].map(({ icon, color, glow, title, desc }) => (
+              <div key={title}
+                className="rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 cursor-default group"
+                style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${color}40`; (e.currentTarget as HTMLDivElement).style.boxShadow = `0 0 32px ${glow}` }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,255,255,0.07)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none" }}>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4"
+                  style={{ background:`${color}12`, border:`1px solid ${color}30` }}>
+                  {icon}
+                </div>
+                <p className="text-[15px] font-black text-white mb-2">{title}</p>
+                <p className="text-[12px] text-gray-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ╔══ HOW IT WORKS ════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-20"
+          style={{ background:"rgba(255,255,255,0.01)", borderTop:"1px solid rgba(255,255,255,0.05)", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-14">
+              <span className="font-mono text-[10px] text-blue-500 tracking-[0.3em] uppercase font-bold">// HOW IT WORKS</span>
+              <h2 className="mt-3 text-white font-black" style={{ fontSize:"clamp(24px,4vw,38px)" }}>
+                From zero to Cryptanalyst
+              </h2>
+            </div>
+            <div className="space-y-0">
+              {[
+                { step:"01", color:"#60a5fa", title:"Create your account",      desc:"Free signup. No credit card. You get 1000 rating, 0 coins, and a clean slate.",        icon:"👤" },
+                { step:"02", color:"#4ade80", title:"Learn the fundamentals",   desc:"Start with Classical Ciphers — Caesar, Vigenère, Playfair. Then Symmetric, Hashing, Asymmetric.", icon:"📚" },
+                { step:"03", color:"#fbbf24", title:"Compete in Daily Contests", desc:"One cipher puzzle every day. Solve it, earn coins, climb the leaderboard.",         icon:"📅" },
+                { step:"04", color:"#f87171", title:"Battle other players",      desc:"Challenge anyone to a live 1v1 cipher race. First to decrypt wins.",                  icon:"⚔️" },
+                { step:"05", color:"#a78bfa", title:"Earn & unlock",            desc:"Collect 27 achievement badges. Buy power-ups. Get certified. Go Pro.",                icon:"🏆" },
+              ].map(({ step, color, title, desc, icon }, i) => (
+                <div key={step} className="flex gap-6 py-6"
+                  style={{ borderBottom: i < 4 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                  <div className="shrink-0 flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[13px]"
+                      style={{ background:`${color}15`, border:`1.5px solid ${color}40`, color }}>
+                      {step}
+                    </div>
+                    {i < 4 && <div className="w-px flex-1 min-h-[20px]" style={{ background:`${color}20` }}/>}
+                  </div>
+                  <div className="flex-1 pb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{icon}</span>
+                      <p className="text-[15px] font-black text-white">{title}</p>
+                    </div>
+                    <p className="text-[12px] text-gray-500 leading-relaxed">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ╔══ PRICING PREVIEW ════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-24 max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <span className="font-mono text-[10px] text-amber-500 tracking-[0.3em] uppercase font-bold">// PRICING</span>
+            <h2 className="mt-3 text-white font-black" style={{ fontSize:"clamp(24px,4vw,38px)" }}>
+              Free to start. Pro to dominate.
+            </h2>
+            <p className="text-[13px] text-gray-600 mt-2">No paywalls on learning. Pro unlocks competitive advantages.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-2xl mx-auto">
+            {/* Free */}
+            <div className="rounded-2xl p-6" style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.08)" }}>
+              <p className="text-[11px] font-bold text-gray-600 uppercase tracking-widest mb-2">Free</p>
+              <p className="text-[36px] font-black text-white mb-4">₹0 <span className="text-[14px] text-gray-600 font-normal">forever</span></p>
+              <ul className="space-y-2.5 mb-6">
+                {["All cipher visualizers","Daily Contest","Cipher Challenge","Speed Round","Cipher Battle","Basic profile & achievements"].map(f=>(
+                  <li key={f} className="flex items-center gap-2 text-[12px] text-gray-400">
+                    <span className="text-gray-600">✓</span>{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/dashboard"
+                className="block w-full py-2.5 rounded-xl text-[12px] font-bold text-center text-gray-400 transition-colors hover:text-white"
+                style={{ border:"1px solid rgba(255,255,255,0.1)" }}>
+                Get Started Free
+              </Link>
+            </div>
+            {/* Pro */}
+            <div className="rounded-2xl p-6 relative overflow-hidden"
+              style={{ background:"rgba(251,191,36,0.05)", border:"2px solid rgba(251,191,36,0.3)", boxShadow:"0 0 40px rgba(251,191,36,0.08)" }}>
+              <div className="absolute top-4 right-4 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full"
+                style={{ background:"rgba(251,191,36,0.2)", color:"#fbbf24", border:"1px solid rgba(251,191,36,0.4)" }}>
+                POPULAR
+              </div>
+              <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color:"#fbbf24" }}>💎 Pro</p>
+              <p className="text-[36px] font-black text-white mb-4">₹99 <span className="text-[14px] text-gray-500 font-normal">/month</span></p>
+              <ul className="space-y-2.5 mb-6">
+                {["Everything in Free","Unlimited Speed Rounds","Hard difficulty unlocked","Pro badge on profile","Downloadable certificates","Priority support"].map(f=>(
+                  <li key={f} className="flex items-center gap-2 text-[12px] text-gray-300">
+                    <span style={{ color:"#fbbf24" }}>✦</span>{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/pricing"
+                className="block w-full py-2.5 rounded-xl text-[13px] font-black text-center text-white transition-all hover:brightness-110"
+                style={{ background:"linear-gradient(135deg,#d97706,#b45309)", boxShadow:"0 0 20px rgba(217,119,6,0.35)" }}>
+                Upgrade to Pro
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ╔══ FINAL CTA ════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-24 relative overflow-hidden"
+          style={{ borderTop:"1px solid rgba(255,255,255,0.05)" }}>
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] rounded-full blur-[120px] opacity-20"
+              style={{ background:"linear-gradient(90deg,#3b82f6,#8b5cf6)" }}/>
+          </div>
+          <div className="max-w-2xl mx-auto text-center relative z-10">
+            <p className="font-mono text-[10px] text-blue-500 tracking-[0.3em] uppercase font-bold mb-4">// START NOW</p>
+            <h2 className="text-white font-black mb-4 leading-tight"
+              style={{ fontSize:"clamp(28px,6vw,52px)" }}>
+              The cipher won&apos;t<br/>
+              <span style={{ color:"#60a5fa" }}>decrypt itself.</span>
+            </h2>
+            <p className="text-[14px] text-gray-500 mb-8 leading-relaxed">
+              Join thousands of students learning cryptography the right way —<br/>
+              by actually breaking codes.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link href="/contest"
+                className="px-8 py-4 rounded-2xl text-[14px] font-black text-white transition-all hover:brightness-110"
+                style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 32px rgba(37,99,235,0.4)" }}>
+                Start Daily Contest →
+              </Link>
+              <Link href="/blockchain"
+                className="px-8 py-4 rounded-2xl text-[14px] font-black transition-all hover:bg-white/10"
+                style={{ border:"1px solid rgba(255,255,255,0.15)", color:"#9ca3af" }}>
+                Explore Blockchain Lab
+              </Link>
+            </div>
+            <p className="text-[11px] text-gray-700 mt-5">Free forever · No credit card · 200+ puzzles waiting</p>
+          </div>
+        </section>
+
         {/* ╔══ BOTTOM STRIP ════════════════════════════════════════════════╗ */}
         <footer className="px-6 sm:px-10 py-8"
           style={{ borderTop: "1px solid rgba(255,255,255,0.045)" }}>
@@ -800,18 +1004,19 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-[13px] font-bold text-white leading-tight">CryptoVerse</p>
-                <p className="text-[9px] text-gray-700 tracking-[0.15em] uppercase">Educational Platform v2.0</p>
+                <p className="text-[9px] text-gray-700 tracking-[0.15em] uppercase">© 2026 Priyanshu Roy · All Rights Reserved</p>
               </div>
             </div>
             <nav className="flex flex-wrap gap-x-5 gap-y-2">
               {[
-                ["Classical",  "/classical"],
-                ["Symmetric",  "/symmetric"],
-                ["Hashing",    "/hashing"],
-                ["Asymmetric", "/asymmetric"],
-                ["Contest",    "/contest"],
-                ["Dashboard",  "/dashboard"],
-                ["Profile",    "/profile"],
+                ["Contest",      "/contest"],
+                ["Challenge",    "/challenge"],
+                ["Battle",       "/battle"],
+                ["Blockchain",   "/blockchain"],
+                ["Friends",      "/friends"],
+                ["Pricing",      "/pricing"],
+                ["Certificates", "/certificates"],
+                ["Profile",      "/profile"],
               ].map(([label, href]) => (
                 <Link key={label} href={href}
                   className="text-[11px] font-mono text-gray-700 hover:text-blue-400 transition-colors tracking-wider">

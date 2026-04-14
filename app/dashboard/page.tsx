@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/AuthContext"
 import { supabase } from "@/lib/supabase"
-import { getCoins, getUnlocked as getUnlockedAch } from "@/lib/inventory"
-import { ACHIEVEMENTS } from "@/lib/achievements"
+// coins read from localStorage in useEffect
+import { ACHIEVEMENTS, getUnlocked } from "@/lib/achievements"
 import { getProStatus } from "@/lib/pro"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -90,7 +90,7 @@ export default function DashboardPage() {
     try {
       setCoins(Number(localStorage.getItem("cv_coins") ?? "0"))
       setLocalStreak(Number(localStorage.getItem("cv_streak") ?? "0"))
-      setUnlocked(JSON.parse(localStorage.getItem("cv_achievements") ?? "[]"))
+      setUnlocked(getUnlocked())
     } catch {}
   }, [])
 

@@ -56,6 +56,10 @@ export interface Profile {
   is_pro:          boolean | null
   pro_expires_at:  string | null
   coins_purchased: number | null
+  // Auth security
+  is_verified:     boolean | null
+  mfa_enabled:     boolean | null
+  email:           string | null
 }
 
 export interface ContestEntry {

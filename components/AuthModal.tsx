@@ -562,6 +562,15 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
   const [unconfirmed,   setUnconfirmed]  = useState(false)
   const [resending,     setResending]    = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
+  const [mfaPending,    setMfaPending]   = useState(false)
+  const [mfaUserId,     setMfaUserId]    = useState("")
+  const [mfaOtp,        setMfaOtp]       = useState("")
+  const [mfaLoading,    setMfaLoading]   = useState(false)
+  const [mfaError,      setMfaError]     = useState("")
+  const [mfaResendCd,   setMfaResendCd]  = useState(0)
+  const [verifyPending, setVerifyPending] = useState(false)
+  const [verifyEmail,   setVerifyEmail]   = useState("")
+  const [resendVCd,     setResendVCd]     = useState(0)
   const strength = pwStrength(password)
 
   const switchTab = (t: "login"|"register"|"forgot") => {
@@ -615,26 +624,43 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
 
     try {
       if (tab === "login") {
-        const rawErr = await signIn(email, password)
+        const res  = await fetch("/api/auth/login", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+        })
+        const data = await res.json()
         if (timedOut) return
         clearTimeout(safetyTimer)
-        if (!rawErr) { setLoading(false); onClose(); return }
-        const isUnconfirmed = /confirm|verified|not confirmed/i.test(rawErr)
-        if (isUnconfirmed) {
-          setUnconfirmed(true)
-          setErrs({ global: "Your email hasn\'t been confirmed yet." })
-        } else {
-          setErrs({ global: /invalid.*credentials|wrong.*password|no user/i.test(rawErr)
-            ? "Incorrect email or password. Please try again."
-            : rawErr })
+        if (!res.ok) {
+          if (data.code === "EMAIL_NOT_VERIFIED") {
+            setVerifyPending(true); setVerifyEmail(data.email ?? email.trim().toLowerCase())
+          }
+          setErrs({ global: data.error ?? "Login failed" }); shake()
+          setLoading(false); return
         }
-        shake()
+        if (data.code === "MFA_REQUIRED") {
+          setMfaPending(true); setMfaUserId(data.user_id)
+          setLoading(false); return
+        }
+        // No MFA — sign in normally to get session
+        const rawErr = await signIn(email.trim().toLowerCase(), password)
+        if (timedOut) return
+        if (!rawErr) { setLoading(false); onClose(); return }
+        setErrs({ global: "Login failed. Please try again." }); shake()
       } else {
-        const err = await signUp(email, password, username.trim())
+        const res  = await fetch("/api/auth/register", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password, username: username.trim() })
+        })
+        const data = await res.json()
         if (timedOut) return
         clearTimeout(safetyTimer)
-        if (err) { setErrs({ global: err }); shake() }
-        else { setLoading(false); onClose() }
+        if (!res.ok) { setErrs({ global: data.error ?? "Registration failed" }); shake() }
+        else {
+          setVerifyPending(true)
+          setVerifyEmail(email.trim().toLowerCase())
+          setSuccess(data.message ?? "Account created! Check your email to verify before logging in.")
+        }
       }
     } catch (e: any) {
       if (timedOut) return
@@ -645,24 +671,59 @@ export default function AuthModal({ onClose, defaultTab = "login" }: Props) {
     }
   }
 
-  const handleResend = async () => {
-    if (!email || resending || resendSuccess) return
+  const handleResendVerification = async () => {
+    if (!verifyEmail || resending) return
     setResending(true)
     try {
-      const { createClient } = await import("@supabase/supabase-js")
-      const sb = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      await sb.auth.resend({ type: "signup", email })
-      setResendSuccess(true)
-      setErrs(e => ({ ...e, global: undefined }))
-      setSuccess("Confirmation email resent! Check your inbox (and spam folder).")
-    } catch {
-      setErrs(e => ({ ...e, global: "Failed to resend — try again in a moment." }))
-    } finally { setResending(false) }
+      const res  = await fetch("/api/auth/resend-verification", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ email: verifyEmail })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setResendSuccess(true); setSuccess("Verification email sent! Check your inbox.")
+        setResendVCd(60)
+        const iv = setInterval(() => setResendVCd(s => { if(s<=1){clearInterval(iv);return 0} return s-1 }), 1000)
+      } else { setErrs(e => ({ ...e, global: data.error })) }
+    } catch { setErrs(e => ({ ...e, global: "Failed to resend — try again." })) }
+    finally { setResending(false) }
   }
 
+  const handleVerifyOtp = async () => {
+    if (mfaOtp.length !== 6) { setMfaError("Enter the 6-digit code"); return }
+    setMfaLoading(true); setMfaError("")
+    try {
+      const res  = await fetch("/api/auth/verify-otp", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ user_id: mfaUserId, code: mfaOtp, purpose: "mfa" })
+      })
+      const data = await res.json()
+      if (data.success) {
+        // OTP verified — sign in to get session
+        const rawErr = await signIn(email.trim().toLowerCase(), password)
+        if (!rawErr) { onClose(); return }
+        setMfaError("Session error — please try logging in again")
+      } else { setMfaError(data.error ?? "Invalid code") }
+    } catch { setMfaError("Server error — try again") }
+    finally { setMfaLoading(false) }
+  }
+
+  const handleResendOtp = async () => {
+    if (mfaResendCd > 0) return
+    try {
+      const res = await fetch("/api/auth/resend-otp", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ user_id: mfaUserId, purpose: "mfa" })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMfaResendCd(60)
+        const iv = setInterval(() => setMfaResendCd(s => { if(s<=1){clearInterval(iv);return 0} return s-1 }), 1000)
+      } else { setMfaError(data.error) }
+    } catch { setMfaError("Failed to resend") }
+  }
+
+  const handleResend = handleResendVerification
   const onKey = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !loading) handleSubmit() }
 
   return (

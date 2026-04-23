@@ -326,6 +326,25 @@ export default function ProfilePage() {
 
   // ── Derived stats ──────────────────────────────────────────────────────────
   const tier      = getTier(profile.rating)
+  const [mfaEnabled, setMfaEnabled]   = useState(profile.mfa_enabled ?? false)
+  const [mfaLoading, setMfaLoading]   = useState(false)
+  const [mfaMsg,     setMfaMsg]       = useState<string|null>(null)
+
+  const toggleMFA = async () => {
+    setMfaLoading(true)
+    const res  = await fetch("/api/auth/enable-mfa", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ user_id: user!.id, enabled: !mfaEnabled })
+    })
+    const data = await res.json()
+    if (data.success) {
+      setMfaEnabled(!mfaEnabled)
+      updateProfileLocal({ mfa_enabled: !mfaEnabled })
+      setMfaMsg(!mfaEnabled ? "MFA enabled — you'll receive a code by email on each login." : "MFA disabled.")
+      setTimeout(() => setMfaMsg(null), 4000)
+    }
+    setMfaLoading(false)
+  }
   const nextTier  = TIERS.find(t => t.min > profile.rating)
   const ptsToNext = nextTier ? nextTier.min - profile.rating : null
   const tierProg  = nextTier ? ((profile.rating - tier.min) / (nextTier.min - tier.min)) * 100 : 100
@@ -758,6 +777,26 @@ export default function ProfilePage() {
                 })}
               </div>
             )}
+          {/* MFA Security */}
+          <div className="glass glass-hover rounded-2xl p-5 cv-u3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[13px] font-bold text-white">Two-Factor Authentication</p>
+                <p className="text-[11px] text-gray-600 mt-0.5">
+                  {mfaEnabled
+                    ? "MFA is ON — you'll receive an email code on each login."
+                    : "Add an extra layer of security to your account."}
+                </p>
+                {mfaMsg && <p className="text-[11px] text-emerald-400 mt-1">{mfaMsg}</p>}
+              </div>
+              <button onClick={toggleMFA} disabled={mfaLoading}
+                className="relative shrink-0 w-12 h-6 rounded-full transition-all duration-300 disabled:opacity-60"
+                style={{ background: mfaEnabled ? "#2563eb" : "rgba(255,255,255,0.1)", border: `1px solid ${mfaEnabled ? "#3b82f6" : "rgba(255,255,255,0.15)"}` }}>
+                <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-300"
+                  style={{ left: mfaEnabled ? "calc(100% - 22px)" : "2px" }}/>
+              </button>
+            </div>
+          </div>
           </>
         )}
 

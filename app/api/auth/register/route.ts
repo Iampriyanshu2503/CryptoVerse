@@ -1,62 +1,79 @@
+import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { NextResponse } from "next/server"
+import {
+  validateEmail, validatePassword, validateUsername,
+  sanitizeInput, checkRateLimit, createVerificationToken
+} from "@/lib/auth-utils"
+import { sendVerificationEmail } from "@/lib/email"
 
-// This route uses the SERVICE ROLE key (server-only, never sent to browser)
-// which lets us create + immediately confirm a user in one step.
-const adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,   // ← add this to .env.local
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { email, password, username } = await req.json()
+    const body = await req.json()
+    const email    = sanitizeInput(body.email    ?? "").toLowerCase()
+    const password = body.password ?? ""
+    const username = sanitizeInput(body.username ?? "").toLowerCase()
 
-    // ── Basic server-side validation ──────────────────────────────────────────
-    if (!email || !password || !username) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
-    if (username.length < 3 || username.length > 20) {
-      return NextResponse.json({ error: "Username must be 3–20 characters" }, { status: 400 })
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return NextResponse.json({ error: "Username: letters, numbers, underscores only" }, { status: 400 })
-    }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 })
-    }
+    // ── Validate inputs ──
+    const emailCheck = validateEmail(email)
+    if (!emailCheck.valid) return NextResponse.json({ error: emailCheck.reason }, { status: 400 })
 
-    // ── Check username taken ──────────────────────────────────────────────────
-    const { data: existing } = await adminClient
-      .from("profiles")
-      .select("id")
-      .eq("username", username)
-      .maybeSingle()
+    const passCheck = validatePassword(password)
+    if (!passCheck.valid) return NextResponse.json({ error: passCheck.reason }, { status: 400 })
 
-    if (existing) {
-      return NextResponse.json({ error: "Username already taken" }, { status: 409 })
+    const userCheck = validateUsername(username)
+    if (!userCheck.valid) return NextResponse.json({ error: userCheck.reason }, { status: 400 })
+
+    // ── Rate limit by IP ──
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown"
+    const rateCheck = await checkRateLimit(ip, "register")
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Please wait ${rateCheck.retryAfter} seconds.` },
+        { status: 429 }
+      )
     }
 
-    // ── Create user with email_confirm: true — skips confirmation email ───────
-    const { data, error } = await adminClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,          // ← confirms immediately, no email needed
+    // ── Check username uniqueness ──
+    const { data: existingUsername } = await admin.from("profiles")
+      .select("id").eq("username", username).maybeSingle()
+    if (existingUsername) return NextResponse.json({ error: "Username is already taken" }, { status: 409 })
+
+    // ── Create Supabase user ──
+    const { data: authData, error: authError } = await admin.auth.admin.createUser({
+      email, password,
+      email_confirm: true,   // bypass Supabase's own confirmation — we handle it
       user_metadata: { username },
     })
-
-    if (error) {
-      // Supabase returns "already registered" for duplicate emails
-      const msg = error.message.toLowerCase().includes("already registered")
-        ? "An account with this email already exists"
-        : error.message
-      return NextResponse.json({ error: msg }, { status: 400 })
+    if (authError) {
+      // Don't reveal if email exists
+      if (authError.message.includes("already registered") || authError.message.includes("already exists")) {
+        return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
+      }
+      throw new Error(authError.message)
     }
 
-    return NextResponse.json({ success: true, userId: data.user.id })
-  } catch (err: any) {
-    console.error("Register route error:", err)
-    return NextResponse.json({ error: "Server error — please try again" }, { status: 500 })
+    // ── Insert profile ──
+    await admin.from("profiles").insert({
+      id:          authData.user.id,
+      username,
+      email,
+      is_verified: false,
+    })
+
+    // ── Send verification email ──
+    const token = await createVerificationToken(authData.user.id, email)
+    const sent  = await sendVerificationEmail(email, username, token)
+    if (!sent) console.error("[Register] Verification email failed for", email)
+
+    return NextResponse.json({
+      success: true,
+      message: "Account created. Please check your email to verify your account.",
+      user_id: authData.user.id,
+    })
+  } catch (e: any) {
+    console.error("[Register]", e.message)
+    return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 })
   }
 }

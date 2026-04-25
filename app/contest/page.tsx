@@ -528,160 +528,191 @@ export default function ContestPage() {
 
   // ─── Lobby ──────────────────────────────────────────────────────────────────
   if (screen === "lobby") return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="min-h-screen" style={{ background:"#050508" }}>
+      <style>{`
+        @keyframes cv-up   { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes cv-pop  { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
+        @keyframes cv-glow { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        @keyframes cipher-flicker { 0%,100%{opacity:1} 45%{opacity:0.85} 50%{opacity:1} 92%{opacity:0.9} }
+        .cv-u { animation: cv-up  0.45s cubic-bezier(0.23,1,0.32,1) both }
+        .cv-p { animation: cv-pop 0.35s cubic-bezier(0.23,1,0.32,1) both }
+        .glass { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+        .cipher-text { animation: cipher-flicker 4s ease-in-out infinite; }
+      `}</style>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} defaultTab={authTab} />}
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-7">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-xl font-semibold text-white tracking-tight">Daily Contest</h1>
-            <span className="text-[10px] font-semibold uppercase tracking-widest border px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border-amber-500/20">
-              Live
-            </span>
-          </div>
-          <p className="text-[13px] text-gray-500">One cipher puzzle every day. Compete globally, earn rating, climb the ranks.</p>
-        </div>
+      <div className="px-6 md:px-10 py-8 max-w-5xl mx-auto">
 
-        {/* Auth bar */}
-        {user && profile ? (
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-[13px] font-semibold text-white">{profile.username}</p>
-              <div className="flex items-center gap-1.5 justify-end">
-                {(() => { const t = getTier(profile.rating); return (
-                  <span className={`text-[9px] font-bold uppercase tracking-widest border px-1.5 py-0.5 rounded-full ${t.bg} ${t.color}`}>
-                    {t.icon} {t.name}
-                  </span>
-                )})()}
-                <span className="text-[11px] font-mono text-gray-400">{profile.rating}</span>
-              </div>
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between mb-8 cv-u">
+          <div>
+            <div className="flex items-center gap-3 mb-1.5">
+              <h1 className="text-2xl font-black text-white tracking-tight">Daily Contest</h1>
+              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", color:"#4ade80" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>LIVE
+              </span>
             </div>
-            <button onClick={signOut} className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors border border-gray-800 px-3 py-1.5 rounded-lg">
-              Sign out
-            </button>
+            <p className="text-[13px] text-gray-500">One cipher puzzle every day — same for everyone, globally.</p>
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={() => { setAuthTab("login"); setShowAuth(true) }}
-              className="text-[12px] text-gray-400 hover:text-white border border-gray-700 px-4 py-1.5 rounded-lg transition-colors">
-              Sign In
-            </button>
-            <button onClick={() => { setAuthTab("register"); setShowAuth(true) }}
-              className="text-[12px] bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors">
-              Register
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {/* Today's puzzle */}
-        <div className="col-span-2 bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="flex items-center gap-2 mb-4">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
-            </span>
-            <span className="text-[11px] text-blue-400 font-medium tracking-widest uppercase">Today — {todayStr}</span>
-          </div>
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${DIFF[puzzle.difficulty].badge}`}>
-                  {puzzle.difficulty}
-                </span>
-                <span className="text-[10px] text-gray-600 border border-gray-800/60 px-2 py-0.5 rounded-full">{puzzle.cipher}</span>
-              </div>
-              <p className="text-[11px] text-gray-600 mb-2 font-mono">{puzzle.keyInfo}</p>
-              <p className="text-xl font-mono text-white tracking-widest">{puzzle.ciphertext}</p>
-            </div>
-            <div className="text-right shrink-0 ml-4">
-              <p className={`text-2xl font-bold ${DIFF[puzzle.difficulty].text}`}>{puzzle.points}</p>
-              <p className="text-[10px] text-gray-600">max pts</p>
-            </div>
-          </div>
-
-          {alreadyPlayed ? (
-            <div className="bg-emerald-900/20 border border-emerald-700/30 rounded-xl px-4 py-3 flex items-center gap-2">
-              <span className="text-emerald-400">✓</span>
-              <span className="text-[12px] text-emerald-400 font-medium">You've completed today's challenge!</span>
-              {userTodayRank > 0 && <span className="text-[11px] text-gray-500 ml-auto">Rank #{userTodayRank}</span>}
-            </div>
-          ) : (
-            <button onClick={startContest}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-[13px] font-semibold transition-colors flex items-center justify-center gap-2">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 2l9 4.5-9 4.5V2z" fill="currentColor"/></svg>
-              {user ? "Start Challenge" : "Sign in to Compete"}
-            </button>
-          )}
-        </div>
-
-        {/* Sidebar: countdown + profile */}
-        <div className="space-y-3">
-          <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-4 text-center">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">Next puzzle in</p>
-            <p className="text-2xl font-mono font-bold text-white tracking-wider">{countdown}</p>
-          </div>
-
-          {profile ? (
-            <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-4">
-              <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-3">Your Stats</p>
+          {user && profile ? (
+            <div className="flex items-center gap-3 shrink-0">
               {(() => { const t = getTier(profile.rating); return (
-                <div className="mb-3">
-                  <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${t.bg} ${t.color}`}>
-                    {t.icon} {t.name}
-                  </span>
+                <div className="text-right">
+                  <p className="text-[13px] font-bold text-white">{profile.username}</p>
+                  <p className="text-[11px] font-mono mt-0.5" style={{ color: t.color.replace("text-","") === "gray-400" ? "#9ca3af" : t.color.replace("text-","") }}>
+                    {t.icon} {t.name} · {profile.rating}
+                  </p>
                 </div>
               )})()}
-              <p className="text-2xl font-bold text-white mb-0.5">{profile.rating}</p>
-              <p className="text-[10px] text-gray-600 mb-3">Contest Rating</p>
-              <div className="grid grid-cols-3 gap-1.5 text-center">
-                {[
-                  { label:"Played",  val: profile.contests_played },
-                  { label:"Streak",  val: profile.streak > 1 ? `${profile.streak} 🔥` : `—` },
-                  { label:"Best",    val: profile.best_score },
-                ].map(({ label, val }) => (
-                  <div key={label} className="bg-gray-900/40 rounded-lg py-2">
-                    <p className="text-[12px] font-bold text-white">{val}</p>
-                    <p className="text-[9px] text-gray-600 uppercase tracking-wider">{label}</p>
-                  </div>
-                ))}
-              </div>
+              <button onClick={signOut}
+                className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors px-3 py-1.5 rounded-lg"
+                style={{ border:"1px solid rgba(255,255,255,0.08)" }}>
+                Sign out
+              </button>
             </div>
           ) : (
-            <div className="bg-[#0d0d0d] border border-gray-800/40 rounded-2xl p-4 text-center">
-              <p className="text-3xl mb-2">🎯</p>
-              <p className="text-[11px] text-gray-500 mb-3">Sign in to track your rating and appear on the leaderboard</p>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => { setAuthTab("login"); setShowAuth(true) }}
+                className="text-[12px] text-gray-400 hover:text-white px-4 py-2 rounded-xl transition-colors"
+                style={{ border:"1px solid rgba(255,255,255,0.1)" }}>Sign In</button>
               <button onClick={() => { setAuthTab("register"); setShowAuth(true) }}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-1.5 rounded-lg text-[12px] font-medium transition-colors">
-                Create Account
+                className="text-[12px] font-bold text-white px-4 py-2 rounded-xl transition-all"
+                style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 16px rgba(37,99,235,0.35)" }}>
+                Register
               </button>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Leaderboard */}
-      <div className="bg-[#0d0d0d] border border-gray-800/60 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[13px] font-semibold text-white">Leaderboard</p>
-          <div className="flex gap-1 bg-gray-900/60 border border-gray-800/60 rounded-lg p-0.5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          {/* ── Today's Puzzle Card ── */}
+          <div className="lg:col-span-2 rounded-2xl p-6 relative overflow-hidden cv-u"
+            style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(96,165,250,0.2)", boxShadow:"0 0 40px rgba(37,99,235,0.08)", animationDelay:"0.05s" }}>
+            <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-[80px] pointer-events-none opacity-30"
+              style={{ background:"radial-gradient(circle,#1d4ed8,transparent)" }}/>
+
+            <div className="flex items-center gap-2 mb-5 relative z-10">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Today — {todayStr}</span>
+              <span className="text-gray-700">·</span>
+              <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${DIFF[puzzle.difficulty].badge}`}>
+                {puzzle.difficulty}
+              </span>
+              <span className="text-[10px] font-mono text-gray-600 px-2 py-0.5 rounded-full"
+                style={{ border:"1px solid rgba(255,255,255,0.08)" }}>{puzzle.cipher}</span>
+            </div>
+
+            <div className="relative z-10 mb-5">
+              <p className="text-[10px] text-gray-700 uppercase tracking-widest mb-2">Decrypt this ciphertext</p>
+              <p className="text-[22px] md:text-[26px] font-mono text-white tracking-[0.25em] leading-relaxed cipher-text break-all">
+                {puzzle.ciphertext}
+              </p>
+              <p className="text-[11px] text-gray-800 font-mono mt-1 tracking-widest">{puzzle.plaintext.replace(/[^ ]/g,"·")}</p>
+            </div>
+
+            <div className="flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="text-center px-3 py-1.5 rounded-xl" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)" }}>
+                  <p className={`text-[20px] font-black leading-none ${DIFF[puzzle.difficulty].text}`}>{puzzle.points}</p>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-wider mt-0.5">Max pts</p>
+                </div>
+                <p className="text-[11px] text-gray-600 font-mono">{puzzle.keyInfo}</p>
+              </div>
+
+              {alreadyPlayed ? (
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                  style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.3)" }}>
+                  <span className="text-emerald-400 text-sm">✓</span>
+                  <span className="text-[12px] font-bold text-emerald-400">Completed!</span>
+                  {userTodayRank > 0 && <span className="text-[11px] text-gray-500">Rank #{userTodayRank}</span>}
+                </div>
+              ) : (
+                <button onClick={startContest}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-black text-white transition-all"
+                  style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 24px rgba(37,99,235,0.4)" }}>
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 1.5l7 4-7 4V1.5z" fill="currentColor"/></svg>
+                  {user ? "Start Challenge" : "Sign in to Play"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Right sidebar ── */}
+          <div className="space-y-3">
+            {/* Countdown */}
+            <div className="rounded-2xl p-5 text-center cv-u" style={{ animationDelay:"0.1s", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}>
+              <p className="text-[9px] font-bold text-gray-600 uppercase tracking-[0.2em] mb-2">Next puzzle in</p>
+              <p className="text-[28px] font-black text-white font-mono tracking-wider" style={{ letterSpacing:"0.1em" }}>{countdown}</p>
+              <div className="flex gap-2 justify-center mt-2">
+                {["HH","MM","SS"].map((l,i) => (
+                  <span key={l} className="text-[8px] text-gray-700 uppercase tracking-widest w-8 text-center">{l}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Profile stats */}
+            {profile ? (
+              <div className="rounded-2xl p-4 cv-u" style={{ animationDelay:"0.15s", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}>
+                {(() => { const t = getTier(profile.rating); return (<>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`text-[10px] font-black uppercase tracking-widest border px-2 py-0.5 rounded-full ${t.bg} ${t.color}`}>
+                      {t.icon} {t.name}
+                    </span>
+                    <span className="text-[18px] font-black text-white">{profile.rating}</span>
+                  </div>
+                  {/* Mini rating bar */}
+                  <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background:"rgba(255,255,255,0.06)" }}>
+                    <div className="h-full rounded-full transition-all duration-700"
+                      style={{ width:`${Math.min((profile.rating/2500)*100,100)}%`, background:"linear-gradient(90deg,#3b82f6,#8b5cf6)" }}/>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-center">
+                    {[
+                      { label:"Played", val: profile.contests_played, color:"#60a5fa" },
+                      { label:"Streak", val: profile.streak > 0 ? `${profile.streak}🔥` : "—", color:"#fb923c" },
+                      { label:"Best",   val: profile.best_score, color:"#4ade80" },
+                    ].map(({ label, val, color }) => (
+                      <div key={label} className="rounded-xl py-2" style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.05)" }}>
+                        <p className="text-[13px] font-black leading-none" style={{ color }}>{val}</p>
+                        <p className="text-[9px] text-gray-700 uppercase tracking-wider mt-0.5">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>)})()}
+              </div>
+            ) : (
+              <div className="rounded-2xl p-5 text-center cv-u" style={{ animationDelay:"0.15s", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-3xl mb-2">🎯</p>
+                <p className="text-[12px] text-gray-500 mb-4 leading-relaxed">Sign in to track rating and appear on the leaderboard</p>
+                <button onClick={() => { setAuthTab("register"); setShowAuth(true) }}
+                  className="w-full py-2 rounded-xl text-[12px] font-bold text-white"
+                  style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  Create Account
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+      {/* ── Leaderboard ── */}
+      <div className="rounded-2xl overflow-hidden cv-u" style={{ animationDelay:"0.2s", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[14px] font-bold text-white">Leaderboard</p>
+          <div className="flex gap-1 p-0.5 rounded-lg" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)" }}>
             {(["today","alltime"] as const).map(t => (
               <button key={t} onClick={() => setBoardTab(t)}
-                className={`px-3 py-1 text-[11px] font-medium rounded-md transition-all ${boardTab===t?"bg-white text-black":"text-gray-500 hover:text-gray-300"}`}>
-                {t==="today"?"Today":"All Time"}
+                className="px-3 py-1 text-[11px] font-bold rounded-md transition-all"
+                style={{ background: boardTab===t ? "rgba(255,255,255,0.1)" : "transparent", color: boardTab===t ? "#fff" : "#4b5563" }}>
+                {t==="today" ? "Today" : "All Time"}
               </button>
             ))}
           </div>
         </div>
 
+        <div className="p-5">
         {boardLoading ? (
           <div className="flex items-center justify-center py-12">
-            <svg className="animate-spin w-5 h-5 text-blue-500" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="30 20"/>
-            </svg>
+            <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
+              style={{ borderColor:"rgba(96,165,250,0.3)", borderTopColor:"#60a5fa" }}/>
           </div>
         ) : boardTab === "today" ? (
           todayBoard.length === 0 ? (
@@ -764,91 +795,132 @@ export default function ContestPage() {
             </div>
           )
         )}
+        </div>
+      </div>
       </div>
     </div>
   )
 
   // ─── Playing ────────────────────────────────────────────────────────────────
   if (screen === "playing") return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={() => { setGameActive(false); setScreen("lobby") }}
-          className="flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-300 transition-colors">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back
-        </button>
-      </div>
+    <div className="min-h-screen px-6 md:px-10 py-8 max-w-2xl mx-auto" style={{ background:"#050508" }}>
+      <style>{`
+        @keyframes cv-up  { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shake  { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+        @keyframes wrong-flash { 0%{background:rgba(239,68,68,0.15)} 100%{background:transparent} }
+        .cv-u { animation:cv-up 0.4s cubic-bezier(0.23,1,0.32,1) both }
+        .shake-anim { animation:shake 0.35s ease both }
+        .glass { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+      `}</style>
 
-      <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-6 mb-5">
-        <div className="flex items-center justify-between mb-3">
+      {/* Back */}
+      <button onClick={() => { setGameActive(false); setScreen("lobby") }}
+        className="flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-300 transition-colors mb-6">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M9.5 6H2.5m0 0L6 2.5M2.5 6L6 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        Back to Lobby
+      </button>
+
+      {/* Cipher card */}
+      <div className="rounded-2xl p-6 mb-5 relative overflow-hidden cv-u"
+        style={{ background:"rgba(255,255,255,0.025)", border:`1px solid ${puzzle.difficulty==="Hard"?"rgba(248,113,113,0.3)":puzzle.difficulty==="Medium"?"rgba(251,191,36,0.3)":"rgba(74,222,128,0.3)"}`, boxShadow:`0 0 40px ${puzzle.difficulty==="Hard"?"rgba(248,113,113,0.06)":puzzle.difficulty==="Medium"?"rgba(251,191,36,0.06)":"rgba(74,222,128,0.06)"}` }}>
+        <div className="absolute top-0 right-0 w-40 h-40 rounded-full blur-[80px] pointer-events-none opacity-20"
+          style={{ background: puzzle.difficulty==="Hard"?"#f87171":puzzle.difficulty==="Medium"?"#fbbf24":"#4ade80" }}/>
+
+        <div className="flex items-center justify-between mb-5 relative z-10">
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${DIFF[puzzle.difficulty].badge}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest border px-2.5 py-0.5 rounded-full ${DIFF[puzzle.difficulty].badge}`}>
               {puzzle.difficulty}
             </span>
-            <span className="text-[10px] text-gray-600 font-mono border border-gray-800 px-2 py-0.5 rounded-full">{puzzle.cipher}</span>
+            <span className="text-[10px] font-mono text-gray-600 px-2 py-0.5 rounded-full"
+              style={{ border:"1px solid rgba(255,255,255,0.08)" }}>{puzzle.cipher}</span>
           </div>
-          <span className={`text-lg font-bold ${DIFF[puzzle.difficulty].text}`}>
-            {calcScore(puzzle.difficulty, seconds, hintsRevealed)} pts
-          </span>
+          <div className="text-right">
+            <p className={`text-[22px] font-black leading-none ${DIFF[puzzle.difficulty].text}`}>
+              {calcScore(puzzle.difficulty, seconds, hintsRevealed)}
+            </p>
+            <p className="text-[9px] text-gray-600 uppercase tracking-wider">points</p>
+          </div>
         </div>
-        <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Decrypt this ciphertext</p>
-        <p className="text-2xl font-mono text-white tracking-widest leading-relaxed mb-2">{puzzle.ciphertext}</p>
-        <p className="text-[11px] text-gray-700 font-mono">{puzzle.plaintext.replace(/[^ ]/g,"·")}</p>
+
+        <div className="relative z-10">
+          <p className="text-[9px] font-bold text-gray-700 uppercase tracking-[0.2em] mb-3">Ciphertext</p>
+          <p className="text-[24px] md:text-[28px] font-mono text-white tracking-[0.3em] leading-relaxed break-all">
+            {puzzle.ciphertext}
+          </p>
+          <div className="flex items-center gap-1.5 mt-3">
+            <p className="text-[11px] font-mono text-gray-800 tracking-[0.2em]">{puzzle.plaintext.replace(/[^ ]/g,"·")}</p>
+            <span className="text-[9px] text-gray-700">{puzzle.plaintext.length} chars</span>
+          </div>
+        </div>
       </div>
 
-      <div className="mb-5">
-        <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Your Answer</label>
-        <div className={shake ? "animate-bounce" : ""}>
+      {/* Answer input */}
+      <div className="mb-5 cv-u" style={{ animationDelay:"0.08s" }}>
+        <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-[0.2em] mb-2">Your Answer</label>
+        <div className={shake ? "shake-anim" : ""}>
           <div className="flex gap-2">
             <input value={attempt} onChange={e => setAttempt(e.target.value)}
               onKeyDown={e => e.key === "Enter" && checkAnswer()}
-              placeholder="Type the plaintext..."
-              className={`flex-1 bg-gray-900/60 border rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-gray-700 focus:outline-none transition-colors ${
-                wrong ? "border-red-500/60 bg-red-900/10" : "border-gray-800 focus:border-gray-600"
-              }`} />
+              placeholder="Type the plaintext here…"
+              className="flex-1 px-4 py-3.5 rounded-xl text-[14px] font-mono text-white placeholder-gray-800 outline-none transition-all"
+              style={{
+                background: wrong ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.04)",
+                border: wrong ? "1.5px solid rgba(239,68,68,0.5)" : "1.5px solid rgba(255,255,255,0.1)",
+              }}
+              autoFocus/>
             <button onClick={checkAnswer}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-[13px] font-semibold transition-colors">
+              className="px-6 py-3.5 rounded-xl text-[13px] font-black text-white transition-all"
+              style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 20px rgba(37,99,235,0.3)" }}>
               Submit
             </button>
           </div>
         </div>
-        {wrong && <p className="text-red-400 text-[12px] mt-1.5">✗ Incorrect — try again</p>}
+        {wrong && (
+          <p className="text-red-400 text-[12px] mt-2 flex items-center gap-1.5">
+            <span>✗</span> Incorrect — try again
+          </p>
+        )}
       </div>
 
-      {/* Power-ups bar */}
+      {/* Power-ups */}
       {inventory.some(i => i.uses > 0) && (
-        <div className="mb-4">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Power-ups</p>
+        <div className="mb-5 cv-u" style={{ animationDelay:"0.12s" }}>
+          <p className="text-[9px] font-bold text-gray-700 uppercase tracking-[0.2em] mb-2">Power-ups</p>
           <div className="flex flex-wrap gap-2">
             {hasItem(ITEM.FREEZE) && (
               <button onClick={activateFreeze} disabled={frozenSecs>0}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[11px] font-semibold hover:bg-cyan-500/20 transition-colors disabled:opacity-40">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all disabled:opacity-40"
+                style={{ background:"rgba(34,211,238,0.08)", border:"1px solid rgba(34,211,238,0.25)", color:"#22d3ee" }}>
                 ❄️ {frozenSecs > 0 ? `Frozen ${frozenSecs}s` : "Time Freeze"}
               </button>
             )}
             {hasItem(ITEM.REVEAL) && (
               <button onClick={activateReveal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 text-violet-400 text-[11px] font-semibold hover:bg-violet-500/20 transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+                style={{ background:"rgba(167,139,250,0.08)", border:"1px solid rgba(167,139,250,0.25)", color:"#a78bfa" }}>
                 🔍 Letter Reveal
               </button>
             )}
             {hasItem(ITEM.CIPHER) && (
               <button onClick={activateCipherID}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-semibold hover:bg-amber-500/20 transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+                style={{ background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)", color:"#fbbf24" }}>
                 🏷 Cipher ID
               </button>
             )}
             {hasItem(ITEM.KEY) && (
               <button onClick={activateKeyFrag}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold hover:bg-emerald-500/20 transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+                style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)", color:"#4ade80" }}>
                 🗝 Key Fragment
               </button>
             )}
             {hasItem(ITEM.FREQ) && (
               <button onClick={activateFreqMap}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-semibold hover:bg-pink-500/20 transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+                style={{ background:"rgba(244,114,182,0.08)", border:"1px solid rgba(244,114,182,0.25)", color:"#f472b6" }}>
                 📊 Freq Map
               </button>
             )}
@@ -873,30 +945,41 @@ export default function ContestPage() {
         </div>
       )}
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] text-gray-600 uppercase tracking-wider">Hints</p>
-          <p className="text-[10px] text-gray-700">{hintsRevealed}/3 used</p>
+      <div className="space-y-2 cv-u" style={{ animationDelay:"0.16s" }}>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[9px] font-bold text-gray-700 uppercase tracking-[0.2em]">Hints</p>
+          <p className="text-[10px] text-gray-700">{hintsRevealed}/3 used · {hintsRevealed > 0 ? `−${hintsRevealed * (puzzle.difficulty==="Easy"?10:puzzle.difficulty==="Medium"?25:50)} pts` : "no penalty"}</p>
         </div>
         {puzzle.hints.map((hint, i) => {
           const revealed = i < hintsRevealed
           return (
-            <div key={i} className={`border rounded-xl p-3 transition-all ${revealed ? "bg-amber-900/10 border-amber-700/30" : "bg-gray-900/30 border-gray-800/30"}`}>
+            <div key={i} className="rounded-xl p-3.5 transition-all duration-300"
+              style={{
+                background: revealed ? "rgba(251,191,36,0.06)" : "rgba(255,255,255,0.02)",
+                border: `1px solid ${revealed ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.06)"}`,
+              }}>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Hint {i+1}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: revealed ? "#fbbf24" : "#374151" }}>
+                  Hint {i+1}
+                </span>
                 {!revealed && i === hintsRevealed && (
                   <button onClick={() => {
-                      const next = i + 1
-                      setHintsRevealed(next)
-                      try { sessionStorage.setItem(timerKey + "_hints", String(next)) } catch {}
-                    }}
-                    className="text-[11px] text-gray-500 hover:text-amber-400 transition-colors">
+                    const next = i + 1
+                    setHintsRevealed(next)
+                    try { sessionStorage.setItem(timerKey + "_hints", String(next)) } catch {}
+                  }}
+                  className="text-[11px] font-semibold transition-colors"
+                  style={{ color:"#6b7280" }}
+                  onMouseEnter={e=>(e.currentTarget.style.color="#fbbf24")}
+                  onMouseLeave={e=>(e.currentTarget.style.color="#6b7280")}>
                     Reveal (−{puzzle.difficulty==="Easy"?10:puzzle.difficulty==="Medium"?25:50} pts)
                   </button>
                 )}
-                {!revealed && i > hintsRevealed && <span className="text-[10px] text-gray-700">Unlock hint {i} first</span>}
+                {!revealed && i > hintsRevealed && (
+                  <span className="text-[10px] text-gray-800">Unlock hint {i} first</span>
+                )}
               </div>
-              {revealed && <p className="text-[12px] text-gray-300 mt-1 leading-relaxed">{hint}</p>}
+              {revealed && <p className="text-[12px] text-gray-300 mt-1.5 leading-relaxed">{hint}</p>}
             </div>
           )
         })}
@@ -910,97 +993,134 @@ export default function ContestPage() {
     const newRating = currentRating + ratingDelta
     const oldTier = getTier(currentRating), newTier = getTier(newRating)
     const tierUp = newTier.name !== oldTier.name && newRating > currentRating
+    const isPerfect = hintsRevealed === 0
 
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto mb-4 text-4xl">🔓</div>
-          <h2 className="text-2xl font-bold text-white mb-1">Challenge Complete!</h2>
-          <p className="text-[13px] text-gray-500">You cracked today's {puzzle.cipher} cipher</p>
+      <div className="min-h-screen px-6 md:px-10 py-12 max-w-2xl mx-auto" style={{ background:"#050508" }}>
+        <style>{`
+          @keyframes cv-up  { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes cv-pop { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
+          @keyframes score-count { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes tier-up { 0%{transform:scale(1)} 50%{transform:scale(1.08)} 100%{transform:scale(1)} }
+          .cv-u { animation:cv-up  0.45s cubic-bezier(0.23,1,0.32,1) both }
+          .cv-p { animation:cv-pop 0.4s cubic-bezier(0.23,1,0.32,1) both }
+          .tier-up { animation:tier-up 0.6s ease both }
+        `}</style>
+
+        {/* Hero */}
+        <div className="text-center mb-8 cv-u">
+          <div className="relative inline-block mb-5">
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl mx-auto"
+              style={{ background:"rgba(74,222,128,0.1)", border:"2px solid rgba(74,222,128,0.3)", boxShadow:"0 0 48px rgba(74,222,128,0.15)" }}>
+              🔓
+            </div>
+            {isPerfect && (
+              <div className="absolute -top-2 -right-2 w-8 h-8 rounded-xl flex items-center justify-center text-base"
+                style={{ background:"rgba(251,191,36,0.2)", border:"1px solid rgba(251,191,36,0.4)" }}>
+                ⭐
+              </div>
+            )}
+          </div>
+          <h2 className="text-[28px] font-black text-white mb-1">
+            {isPerfect ? "Perfect Solve!" : "Challenge Complete!"}
+          </h2>
+          <p className="text-[13px] text-gray-500">
+            You cracked today's <span className="text-white font-semibold">{puzzle.cipher}</span> cipher
+            {isPerfect && <span className="text-amber-400 ml-1">with no hints</span>}
+          </p>
           {tierUp && (
-            <div className="mt-3 inline-flex items-center gap-2 bg-amber-900/20 border border-amber-700/30 rounded-full px-4 py-1.5">
+            <div className="mt-4 inline-flex items-center gap-2 px-5 py-2 rounded-full tier-up"
+              style={{ background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.35)" }}>
               <span className="text-amber-400">🎉</span>
-              <span className="text-[12px] text-amber-400 font-semibold">Tier Up! {oldTier.name} → {newTier.name}</span>
+              <span className="text-[13px] font-black text-amber-400">Tier Up! {oldTier.name} → {newTier.name}</span>
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        {/* Score cards */}
+        <div className="grid grid-cols-4 gap-3 mb-5 cv-u" style={{ animationDelay:"0.08s" }}>
           {[
-            { label:"Score",  value: score.toString(),     color:"text-emerald-400" },
-            { label:"Time",   value: formatTime(seconds),  color:"text-blue-400"    },
-            { label:"Hints",  value: `${hintsRevealed}/3`, color: hintsRevealed===0?"text-emerald-400":"text-amber-400" },
-            { label:"Rating", value: `+${ratingDelta}`,    color:"text-violet-400"  },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-gray-900/60 border border-gray-800/60 rounded-xl p-3 text-center">
-              <p className={`text-xl font-bold ${color}`}>{value}</p>
-              <p className="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">{label}</p>
+            { label:"Score",  value: score.toString(), color:"#4ade80",  big:true },
+            { label:"Time",   value: formatTime(seconds), color:"#60a5fa" },
+            { label:"Hints",  value: `${hintsRevealed}/3`, color: hintsRevealed===0 ? "#4ade80" : "#fbbf24" },
+            { label:"Rating", value: `+${ratingDelta}`, color:"#a78bfa" },
+          ].map(({ label, value, color, big }) => (
+            <div key={label} className="rounded-2xl p-3.5 text-center"
+              style={{ background:"rgba(255,255,255,0.025)", border:`1px solid ${color}25` }}>
+              <p className="font-black leading-none mb-1" style={{ fontSize: big ? "26px" : "20px", color }}>{value}</p>
+              <p className="text-[9px] text-gray-600 uppercase tracking-widest">{label}</p>
             </div>
           ))}
         </div>
 
-        {/* Rating bar */}
-        <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5 mb-5">
+        {/* Rating progress */}
+        <div className="rounded-2xl p-5 mb-4 cv-u" style={{ animationDelay:"0.14s", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[12px] font-semibold text-white">Contest Rating</p>
-            <span className={`text-[10px] font-bold uppercase tracking-widest border px-2 py-0.5 rounded-full ${newTier.bg} ${newTier.color}`}>
+            <p className="text-[12px] font-bold text-white">Contest Rating</p>
+            <span className={`text-[10px] font-black uppercase tracking-widest border px-2.5 py-0.5 rounded-full ${newTier.bg} ${newTier.color}`}>
               {newTier.icon} {newTier.name}
             </span>
           </div>
           <div className="flex items-center gap-3 mb-2">
             <span className="text-[11px] font-mono text-gray-600">{currentRating}</span>
-            <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-600 to-violet-500 rounded-full transition-all duration-1000"
-                style={{ width:`${Math.min((newRating/2500)*100,100)}%` }} />
+            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
+              <div className="h-full rounded-full transition-all duration-1000"
+                style={{ width:`${Math.min((newRating/2500)*100,100)}%`, background:"linear-gradient(90deg,#3b82f6,#8b5cf6)" }}/>
             </div>
-            <span className="text-[12px] font-mono font-bold text-white">{newRating}</span>
+            <span className="text-[13px] font-black text-white">{newRating}</span>
           </div>
-          <div className="flex justify-between">
-            {TIERS.map(t => <span key={t.name} className={`text-[8px] ${t.color}`}>{t.icon}</span>)}
+          <div className="flex justify-between px-0.5">
+            {TIERS.map(t => <span key={t.name} className={`text-[9px] ${t.color}`}>{t.icon}</span>)}
           </div>
         </div>
 
         {/* Save status */}
         {!user ? (
-          <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-4 mb-4 flex items-center gap-3">
-            <span className="text-gray-500 text-[12px]">🔒 Sign in to save your score to the leaderboard.</span>
+          <div className="rounded-2xl p-4 mb-4 cv-u" style={{ animationDelay:"0.18s", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.07)" }}>
+            <p className="text-[12px] text-gray-500">🔒 Sign in to save your score to the global leaderboard.</p>
           </div>
         ) : submitting ? (
-          <div className="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-4 mb-4 flex items-center gap-3">
-            <svg className="animate-spin w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10"/>
-            </svg>
+          <div className="rounded-2xl p-4 mb-4 flex items-center gap-3 cv-u" style={{ animationDelay:"0.18s", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)" }}>
+            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin shrink-0"
+              style={{ borderColor:"rgba(96,165,250,0.3)", borderTopColor:"#60a5fa" }}/>
             <div>
-              <p className="text-[12px] font-semibold text-white">Saving to leaderboard…</p>
-              <p className="text-[11px] text-gray-600">This can take up to 10s on first save of the day</p>
+              <p className="text-[12px] font-bold text-white">Saving to leaderboard…</p>
+              <p className="text-[11px] text-gray-600 mt-0.5">This can take up to 10s on first save of the day</p>
             </div>
           </div>
         ) : saveError ? (
-          <div className="bg-red-900/20 border border-red-700/30 rounded-2xl p-4 mb-4">
-            <p className="text-[12px] font-semibold text-red-400 mb-1">⚠ Save failed</p>
+          <div className="rounded-2xl p-4 mb-4 cv-u" style={{ animationDelay:"0.18s", background:"rgba(239,68,68,0.06)", border:"1px solid rgba(239,68,68,0.3)" }}>
+            <p className="text-[12px] font-bold text-red-400 mb-1">Save failed</p>
             <p className="text-[11px] text-red-400/70 font-mono mb-3 break-all">{saveError}</p>
             <button onClick={() => submitResult(score, ratingDelta)}
-              className="w-full bg-red-600/20 hover:bg-red-600/30 border border-red-600/30 text-red-400 py-2 rounded-xl text-[12px] font-semibold transition-colors">
+              className="w-full py-2 rounded-xl text-[12px] font-bold text-red-400 transition-all"
+              style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)" }}>
               Retry Save
             </button>
           </div>
         ) : submitted ? (
-          <div className="bg-emerald-900/20 border border-emerald-700/30 rounded-2xl p-4 mb-4 flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M2 6.5l3.5 3.5 5.5-6" stroke="#10b981" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <div className="rounded-2xl p-4 mb-4 flex items-center gap-3 cv-u" style={{ animationDelay:"0.18s", background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.3)" }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)" }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M2 7l4 4 6-6" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <div>
-              <p className="text-[13px] font-semibold text-emerald-400">Saved to global leaderboard!</p>
-              {userTodayRank > 0 && <p className="text-[11px] text-gray-500 mt-0.5">You ranked #{userTodayRank} today</p>}
-              {coinsEarned > 0 && <p className="text-[11px] text-amber-400 mt-0.5">🪙 +{coinsEarned} coins earned!</p>}
+              <p className="text-[13px] font-bold text-emerald-400">Saved to global leaderboard!</p>
+              <div className="flex items-center gap-3 mt-0.5">
+                {userTodayRank > 0 && <p className="text-[11px] text-gray-500">Rank #{userTodayRank} today</p>}
+                {coinsEarned > 0 && <p className="text-[11px] text-amber-400">🪙 +{coinsEarned} coins</p>}
+              </div>
             </div>
           </div>
         ) : null}
 
         <button onClick={() => setScreen("lobby")}
-          className="w-full border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 py-2.5 rounded-xl text-[13px] font-medium transition-colors">
+          className="w-full py-3 rounded-2xl text-[13px] font-bold text-gray-400 transition-all cv-u"
+          style={{ animationDelay:"0.22s", border:"1px solid rgba(255,255,255,0.08)" }}
+          onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.color="#fff";(e.currentTarget as HTMLButtonElement).style.borderColor="rgba(255,255,255,0.2)"}}
+          onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.color="#9ca3af";(e.currentTarget as HTMLButtonElement).style.borderColor="rgba(255,255,255,0.08)"}}>
           Back to Lobby
         </button>
       </div>

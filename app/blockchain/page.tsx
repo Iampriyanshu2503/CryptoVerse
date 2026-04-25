@@ -84,6 +84,18 @@ const CHAPTERS = [
     goal: "Mint your own token with a name and supply, then transfer some to another wallet.",
     takeaway: "Tokens are just entries in a shared spreadsheet — the blockchain is that spreadsheet.",
   },
+  {
+    id: "consensus",
+    num: "07",
+    icon: "🌐",
+    title: "How Everyone Agrees",
+    subtitle: "Proof of Work vs Proof of Stake",
+    color: "#22d3ee",
+    glow: "rgba(34,211,238,0.25)",
+    analogy: "With thousands of computers on a network, how do they all agree on which blocks are valid? Two main methods: Proof of Work (burn energy to earn the right) and Proof of Stake (lock up coins to earn the right).",
+    goal: "Run a PoW round and a PoS round. See which miner/validator wins based on hash rate or stake.",
+    takeaway: "Consensus mechanisms are what make blockchain trustless — no single authority decides what's true.",
+  },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,6 +297,7 @@ export default function BlockchainPage() {
           {step === 3 && <WalletChapter   wallets={wallets} onUpdate={updateWallets} onComplete={() => markComplete(3)}/>}
           {step === 4 && <TxChapter       wallets={wallets} mempool={mempool} confirmed={confirmed} chain={chain} onUpdateWallets={updateWallets} onUpdateMempool={updateMempool} onUpdateConfirmed={updateConfirmed} onUpdateChain={updateChain} onComplete={() => markComplete(4)}/>}
           {step === 5 && <TokenChapter    wallets={wallets} tokens={tokens} transfers={transfers} onUpdateTokens={updateTokens} onUpdateTransfers={updateTransfers} onComplete={() => markComplete(5)}/>}
+          {step === 6 && <ConsensusChapter onComplete={() => markComplete(6)}/>}
         </ChapterShell>
       </div>
     </div>
@@ -377,126 +390,214 @@ function HashChapter({ onComplete }: { onComplete: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CH 2 — MINING
+// CH 2 — MINING (fully upgraded)
 // ═══════════════════════════════════════════════════════════════════════════════
 function MiningChapter({ chain, onMined, onComplete }: {
   chain: Block[]; onMined: (c: Block[]) => void; onComplete: () => void
 }) {
-  const [data,       setData]       = useState("My first block 🎉")
-  const [difficulty, setDifficulty] = useState(2)
-  const [mining,     setMining]     = useState(false)
-  const [nonce,      setNonce]      = useState(0)
-  const [liveHash,   setLiveHash]   = useState("")
-  const [mined,      setMined]      = useState<Block|null>(null)
-  const [elapsed,    setElapsed]    = useState(0)
-  const timerRef = useRef<any>(null)
+  const [data,        setData]        = useState("My first block!")
+  const [difficulty,  setDifficulty]  = useState(2)
+  const [mining,      setMining]      = useState(false)
+  const [nonce,       setNonce]       = useState(0)
+  const [liveHash,    setLiveHash]    = useState("")
+  const [mined,       setMined]       = useState<Block|null>(null)
+  const [elapsed,     setElapsed]     = useState(0)
+  const [hashLog,     setHashLog]     = useState<{h:string,ok:boolean}[]>([])
+  const [hashRate,    setHashRate]    = useState(0)
+  const timerRef  = useRef<any>(null)
+  const hrRef     = useRef<number[]>([])
 
-  const difficultyInfo = [
-    { label:"Very Easy", expected:"~10 tries",    color:"#4ade80" },
-    { label:"Easy",      expected:"~100 tries",   color:"#fbbf24" },
-    { label:"Medium",    expected:"~1,000 tries", color:"#f97316" },
-    { label:"Hard",      expected:"~16,000 tries",color:"#f87171" },
-    { label:"Very Hard", expected:"~256,000 tries",color:"#e879f9" },
+  const DIFF_INFO = [
+    { label:"Very Easy", expected:"~16 tries",    color:"#4ade80", tries:16   },
+    { label:"Easy",      expected:"~256 tries",   color:"#fbbf24", tries:256  },
+    { label:"Medium",    expected:"~4,096 tries", color:"#f97316", tries:4096 },
+    { label:"Hard",      expected:"~65k tries",   color:"#f87171", tries:65536},
   ]
-  const di = difficultyInfo[difficulty - 1]
+  const di     = DIFF_INFO[difficulty-1]
+  const target = "0".repeat(difficulty)
 
   const handleMine = async () => {
-    setMining(true); setMined(null); setNonce(0); setLiveHash("")
+    setMining(true); setMined(null); setNonce(0); setLiveHash(""); setHashLog([]); setHashRate(0)
+    hrRef.current = []
     const start = Date.now()
     timerRef.current = setInterval(() => setElapsed(Math.round((Date.now()-start)/100)/10), 100)
-    const prev = chain[chain.length - 1]
-    const block = await mineBlock(chain.length, data, prev.hash, difficulty,
-      undefined, (n, h) => { setNonce(n); setLiveHash(h) })
+    const prev = chain[chain.length-1]
+    const block = await mineBlock(chain.length, data, prev.hash, difficulty, undefined, (n,h) => {
+      setNonce(n); setLiveHash(h)
+      setHashLog(p => {
+        const ok = h.startsWith(target)
+        const entry = { h, ok }
+        return [...p.slice(-6), entry]
+      })
+      // calc hash rate every 200 nonces
+      hrRef.current.push(Date.now())
+      if (hrRef.current.length > 50) hrRef.current.shift()
+      if (hrRef.current.length > 1) {
+        const span = (hrRef.current[hrRef.current.length-1] - hrRef.current[0]) / 1000
+        setHashRate(Math.round(hrRef.current.length / span))
+      }
+    })
     clearInterval(timerRef.current)
-    setMined(block)
-    onMined([...chain, block])
-    onComplete()
+    setMined(block); onMined([...chain, block]); onComplete()
     setMining(false); setElapsed(0)
   }
 
-  const target = "0".repeat(difficulty)
+  const pct = Math.min((nonce / di.tries) * 100, 99)
 
   return (
     <div className="space-y-4">
-      {/* Explanation visual */}
-      <div className="rounded-2xl p-5" style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.07)" }}>
-        <p className="text-[13px] font-bold text-white mb-3">How mining works, step by step:</p>
-        <div className="space-y-2">
+      {/* How mining works */}
+      <div className="rounded-2xl overflow-hidden" style={{ border:"1px solid rgba(255,255,255,0.07)" }}>
+        <div className="px-5 py-3 flex items-center gap-2" style={{ background:"rgba(255,255,255,0.03)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">How it works</span>
+        </div>
+        <div className="p-4 grid grid-cols-4 gap-2">
           {[
-            { n:"1", text:`Take your data: "${data.slice(0,20)}…"`, color:"#60a5fa" },
-            { n:"2", text:"Add a random number (nonce) to it", color:"#a78bfa" },
-            { n:"3", text:"Run SHA-256 on the combination", color:"#f59e0b" },
-            { n:"4", text:`If the hash starts with ${target}, you're done! If not, try the next number.`, color:"#4ade80" },
-          ].map(({ n, text, color }) => (
-            <div key={n} className="flex items-center gap-3 py-2" style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0"
-                style={{ background:`${color}20`, color, border:`1px solid ${color}40` }}>{n}</div>
-              <p className="text-[12px] text-gray-300">{text}</p>
+            { n:"1", icon:"📝", label:"Your data",      sub:`"${data.slice(0,10)}…"`, color:"#60a5fa" },
+            { n:"2", icon:"🎲", label:"+ Nonce",         sub:"Try 1,2,3,4…",          color:"#a78bfa" },
+            { n:"3", icon:"⚙️", label:"SHA-256",         sub:"Hash function",          color:"#f59e0b" },
+            { n:"4", icon:"🎯", label:`Starts ${target}?`, sub:"Yes → block mined!",  color:"#4ade80" },
+          ].map(({ n, icon, label, sub, color }, i) => (
+            <div key={n} className="relative">
+              {i < 3 && <div className="absolute -right-1 top-1/2 -translate-y-1/2 text-gray-700 text-sm z-10">→</div>}
+              <div className="rounded-xl p-3 text-center" style={{ background:`${color}08`, border:`1px solid ${color}20` }}>
+                <div className="w-6 h-6 rounded-lg mx-auto flex items-center justify-center text-[10px] font-black mb-1.5"
+                  style={{ background:`${color}20`, color, border:`1px solid ${color}40` }}>{n}</div>
+                <p className="text-base mb-1">{icon}</p>
+                <p className="text-[10px] font-bold text-white leading-tight">{label}</p>
+                <p className="text-[9px] text-gray-600 mt-0.5 font-mono">{sub}</p>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Controls */}
-      <div className="rounded-2xl p-5" style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.08)" }}>
-        <div className="space-y-4">
-          <div>
-            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest block mb-2">What data to put in this block?</label>
-            <input value={data} onChange={e=>setData(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-[14px] text-white outline-none font-mono"
-              style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)" }}/>
+      <div className="rounded-2xl p-5 space-y-4" style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.08)" }}>
+        <div>
+          <label className="text-[10px] font-bold text-gray-600 uppercase tracking-widest block mb-2">Block data</label>
+          <input value={data} onChange={e=>setData(e.target.value)} disabled={mining}
+            className="w-full px-4 py-3 rounded-xl text-[14px] text-white outline-none font-mono disabled:opacity-50"
+            style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)" }}/>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Difficulty</label>
+            <span className="text-[11px] font-black px-2.5 py-1 rounded-lg" style={{ color:di.color, background:`${di.color}15`, border:`1px solid ${di.color}30` }}>
+              {di.label} · {di.expected}
+            </span>
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">How hard should the puzzle be?</label>
-              <span className="text-[12px] font-bold px-2.5 py-1 rounded-lg" style={{ color:di.color, background:`${di.color}15` }}>
-                {di.label} · {di.expected}
-              </span>
-            </div>
-            <input type="range" min={1} max={4} value={difficulty} onChange={e=>setDifficulty(Number(e.target.value))}
-              className="w-full accent-blue-400"/>
-            <p className="text-[11px] text-gray-600 mt-1">
-              Hash must start with: <span className="font-mono" style={{ color:di.color }}>{"0".repeat(difficulty)}{"x".repeat(8-difficulty)}</span>
-            </p>
+          <div className="flex gap-1.5 mb-2">
+            {DIFF_INFO.map((d,i) => (
+              <button key={d.label} onClick={() => !mining && setDifficulty(i+1)}
+                className="flex-1 py-2.5 rounded-xl text-[11px] font-black transition-all"
+                style={{
+                  background: difficulty===i+1 ? `${d.color}18` : "rgba(255,255,255,0.03)",
+                  border: `1.5px solid ${difficulty===i+1 ? d.color+"60" : "rgba(255,255,255,0.06)"}`,
+                  color: difficulty===i+1 ? d.color : "#374151",
+                }}>
+                {"0".repeat(i+1)}{"x".repeat(4-i-1)}
+              </button>
+            ))}
           </div>
+          <p className="text-[11px] text-gray-600">
+            Hash must start with <span className="font-mono font-black" style={{ color:di.color }}>{target}</span>
+            <span className="font-mono text-gray-800">{"x".repeat(8-difficulty)}</span>
+          </p>
         </div>
       </div>
 
-      {/* Mine button + live display */}
+      {/* Mine button */}
       <button onClick={handleMine} disabled={mining}
-        className="w-full py-4 rounded-2xl text-[15px] font-black text-white disabled:opacity-60 disabled:cursor-not-allowed"
-        style={{ background: mining ? "rgba(96,165,250,0.25)" : "linear-gradient(135deg,#1d4ed8,#1e40af)", border:`1px solid ${mining?"rgba(96,165,250,0.4)":"transparent"}`, boxShadow: mining ? "none" : "0 0 32px rgba(37,99,235,0.4)", cursor: mining ? "not-allowed" : "pointer" }}>
-        {mining ? `Mining... nonce #${nonce.toLocaleString()} (${elapsed}s)` : "Start Mining!"}
+        className="w-full py-4 rounded-2xl text-[15px] font-black text-white disabled:cursor-not-allowed"
+        style={{
+          background: mining ? "rgba(96,165,250,0.1)" : "linear-gradient(135deg,#1d4ed8,#1e40af)",
+          border: `1px solid ${mining ? "rgba(96,165,250,0.25)" : "transparent"}`,
+          boxShadow: mining ? "none" : "0 0 32px rgba(37,99,235,0.4)",
+        }}>
+        {mining ? `Searching… nonce #${nonce.toLocaleString()} · ${elapsed}s` : "Start Mining!"}
       </button>
 
-      {mining && liveHash && (
-        <div className="rounded-2xl p-4" style={{ background:"rgba(96,165,250,0.06)", border:"1px solid rgba(96,165,250,0.2)" }}>
-          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Current attempt</p>
-          <p className="font-mono text-[13px] break-all">
-            <span className="text-red-400">{liveHash.slice(0, difficulty)}</span>
-            <span className="text-gray-600">{liveHash.slice(difficulty, 16)}</span>
-            <span className="text-gray-800">{liveHash.slice(16)}</span>
-          </p>
-          <p className="text-[11px] text-gray-600 mt-1">
-            Looking for: <span className="font-mono text-blue-400">{target}…</span> — first {difficulty} character{difficulty>1?"s":""} must be zero
-          </p>
+      {/* Live mining terminal */}
+      {mining && (
+        <div className="rounded-2xl overflow-hidden" style={{ background:"#080810", border:"1px solid rgba(96,165,250,0.2)", boxShadow:"0 0 24px rgba(37,99,235,0.1)" }}>
+          {/* Terminal titlebar */}
+          <div className="flex items-center gap-2 px-4 py-2.5" style={{ background:"rgba(255,255,255,0.03)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex gap-1.5">
+              {["#f87171","#fbbf24","#4ade80"].map(c=><div key={c} className="w-2.5 h-2.5 rounded-full" style={{ background:c }}/>)}
+            </div>
+            <span className="text-[10px] font-mono text-gray-600 ml-2">sha256_miner — running</span>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"/>
+              <span className="text-[10px] font-mono text-blue-400">{hashRate > 0 ? `${hashRate} H/s` : "…"}</span>
+            </div>
+          </div>
+
+          {/* Hash log */}
+          <div className="p-4 space-y-1 font-mono text-[11px] min-h-[120px]">
+            {hashLog.map((entry, i) => (
+              <div key={i} className="flex items-center gap-2 transition-all" style={{ opacity: 0.3 + (i/hashLog.length)*0.7 }}>
+                <span style={{ color: entry.ok ? "#4ade80" : "#f87171" }}>{entry.ok ? "✓" : "✗"}</span>
+                <span style={{ color: entry.ok ? "#4ade80" : di.color }}>{entry.h.slice(0,difficulty)}</span>
+                <span className="text-gray-700">{entry.h.slice(difficulty,20)}</span>
+                <span className="text-gray-800">{entry.h.slice(20,32)}</span>
+              </div>
+            ))}
+            {/* Blinking cursor */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700">›</span>
+              <span className="text-gray-700 font-mono">{liveHash.slice(0,8)}</span>
+              <span className="inline-block w-1.5 h-3.5 bg-blue-400 animate-pulse" style={{ animationDuration:"0.7s" }}/>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="px-4 pb-4">
+            <div className="flex justify-between text-[10px] text-gray-700 mb-1.5">
+              <span>Nonce: {nonce.toLocaleString()}</span>
+              <span>~{pct.toFixed(0)}% expected progress</span>
+              <span>Target: <span style={{ color:di.color }}>{target}…</span></span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{ width:`${pct}%`, background:`linear-gradient(90deg,#1d4ed8,${di.color})` }}/>
+            </div>
+            <p className="text-[9px] text-gray-700 mt-1.5 text-center">
+              Mining is probabilistic — you might find it before or after the expected number of tries
+            </p>
+          </div>
         </div>
       )}
 
+      {/* Success */}
       {mined && (
-        <div className="rounded-2xl p-5 cv-pop" style={{ background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.3)", boxShadow:"0 0 32px rgba(74,222,128,0.1)" }}>
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-3xl">🎉</span>
+        <div className="rounded-2xl p-5 cv-pop" style={{ background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.3)", boxShadow:"0 0 40px rgba(74,222,128,0.1)" }}>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0"
+              style={{ background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.4)" }}>⛏</div>
             <div>
-              <p className="text-[15px] font-black text-white">Block #{mined.index} Mined!</p>
-              <p className="text-[12px] text-gray-400">Took {mined.nonce.toLocaleString()} attempts</p>
+              <p className="text-[16px] font-black text-white">Block #{mined.index} Mined!</p>
+              <p className="text-[12px] text-gray-400">Found after <span className="text-emerald-400 font-bold">{mined.nonce.toLocaleString()}</span> attempts</p>
             </div>
           </div>
-          <div className="rounded-xl p-3" style={{ background:"rgba(0,0,0,0.3)" }}>
-            <p className="text-[10px] text-gray-600 mb-1">Winning hash — starts with {difficulty} zero{difficulty>1?"s":""}:</p>
-            <p className="font-mono text-[13px] break-all">
-              <span className="text-emerald-400 font-black">{mined.hash.slice(0,difficulty)}</span>
-              <span className="text-gray-400">{mined.hash.slice(difficulty)}</span>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[
+              { label:"Nonce",     value:mined.nonce.toLocaleString(), color:"#60a5fa" },
+              { label:"Difficulty",value:`${difficulty} zero${difficulty>1?"s":""}`,   color:"#fbbf24" },
+              { label:"Chain size",value:`${chain.length} blocks`,                     color:"#a78bfa" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl p-3 text-center" style={{ background:"rgba(0,0,0,0.3)", border:"1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-[14px] font-black" style={{ color }}>{value}</p>
+                <p className="text-[9px] text-gray-600 uppercase tracking-wider mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl p-3" style={{ background:"rgba(0,0,0,0.4)" }}>
+            <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1.5">Winning hash — starts with {difficulty} zero{difficulty>1?"s":""}</p>
+            <p className="font-mono text-[12px] break-all">
+              <span className="text-emerald-400 font-black text-[15px]">{mined.hash.slice(0,difficulty)}</span>
+              <span className="text-gray-400">{mined.hash.slice(difficulty,32)}</span>
+              <span className="text-gray-600">{mined.hash.slice(32)}</span>
             </p>
           </div>
         </div>
@@ -506,17 +607,20 @@ function MiningChapter({ chain, onMined, onComplete }: {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CH 3 — CHAIN
+// CH 3 — CHAIN (upgraded)
 // ═══════════════════════════════════════════════════════════════════════════════
 function ChainChapter({ chain, onUpdate, onComplete }: {
   chain: Block[]; onUpdate: (c: Block[]) => void; onComplete: () => void
 }) {
-  const [edits,    setEdits]    = useState<Record<number,string>>({})
-  const [valid,    setValid]    = useState<boolean|null>(null)
-  const [checking, setChecking] = useState(false)
-  const [selected, setSelected] = useState<number|null>(null)
+  const [edits,           setEdits]           = useState<Record<number,string>>({})
+  const [valid,           setValid]           = useState<boolean|null>(null)
+  const [checking,        setChecking]        = useState(false)
+  const [selected,        setSelected]        = useState<number|null>(null)
+  const [highlightBroken, setHighlightBroken] = useState<number[]>([])
 
-  const edited = (i: number) => edits[i] !== undefined && edits[i] !== chain[i]?.data
+  const edited    = (i: number) => edits[i] !== undefined && edits[i] !== chain[i]?.data
+  const anyEdited = chain.some((_, i) => edited(i))
+  const isBroken  = (i: number) => highlightBroken.includes(i)
 
   const check = async () => {
     setChecking(true)
@@ -529,119 +633,107 @@ function ChainChapter({ chain, onUpdate, onComplete }: {
     }))
     const v = await isChainValid(testChain)
     setValid(v)
+    if (!v) {
+      const broken: number[] = []
+      for (let i = 1; i < testChain.length; i++) {
+        if (testChain[i].previousHash !== testChain[i-1].hash) broken.push(i)
+        if (edited(i-1)) broken.push(i)
+      }
+      setHighlightBroken([...new Set(broken)])
+    } else {
+      setHighlightBroken([])
+    }
     setChecking(false)
     onComplete()
   }
 
-  const displayData = (i: number) => edits[i] !== undefined ? edits[i] : (chain[i]?.data ?? "")
-
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-gray-400 leading-relaxed">
-        Below is your blockchain. Each block stores the <span className="text-white font-semibold">fingerprint (hash)</span> of the block before it.
-        Try editing the data in any block — then click <span className="text-white font-semibold">Check Chain</span> to see what happens.
-      </p>
-
+      <div className="rounded-2xl p-4" style={{ background:"rgba(74,222,128,0.04)", border:"1px solid rgba(74,222,128,0.15)" }}>
+        <p className="text-[12px] text-gray-400 leading-relaxed">
+          Each block stores a <span className="text-emerald-400 font-bold">fingerprint (hash)</span> of the block before it.
+          Edit any block's data below, then click <span className="text-white font-bold">Check Chain</span> — watch the cascade break everything after it.
+        </p>
+      </div>
       {chain.length < 3 && (
         <div className="rounded-2xl p-4 text-center" style={{ background:"rgba(251,191,36,0.06)", border:"1px solid rgba(251,191,36,0.2)" }}>
-          <p className="text-[13px] text-amber-400">⚠ Mine at least 2 more blocks in Chapter 2 first to see the chain effect!</p>
+          <p className="text-[12px] text-amber-400">Mine at least 2 more blocks in Chapter 2 to see the chain effect properly.</p>
         </div>
       )}
-
-      {/* Chain visual */}
-      <div className="overflow-x-auto pb-4" style={{ scrollbarWidth:"thin" }}>
-        <div className="flex items-stretch gap-0 min-w-max">
-          {chain.map((block, i) => (
-            <div key={block.index} className="flex items-center">
-              {/* Block card */}
-              <div className="rounded-2xl p-4 w-[200px] transition-all duration-300 cursor-pointer"
-                style={{
-                  background: edited(i) ? "rgba(239,68,68,0.08)" : selected===i ? "rgba(96,165,250,0.08)" : "rgba(255,255,255,0.025)",
-                  border:`1.5px solid ${edited(i) ? "rgba(239,68,68,0.5)" : selected===i ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.08)"}`,
-                  boxShadow: edited(i) ? "0 0 24px rgba(239,68,68,0.2)" : "none",
-                }}
-                onClick={() => setSelected(selected===i ? null : i)}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-gray-600 uppercase">Block #{block.index}</span>
-                  {i === 0 && <span className="text-[8px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full">GENESIS</span>}
-                  {i === chain.length-1 && i>0 && <span className="text-[8px] font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">LATEST</span>}
-                  {edited(i) && <span className="text-[8px] font-bold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">CHANGED!</span>}
-                </div>
-
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[9px] text-gray-700 mb-1">Data</p>
-                    <input
-                      value={displayData(i)}
-                      onChange={e => { setEdits(p=>({...p,[i]:e.target.value})); setValid(null) }}
-                      onClick={e => e.stopPropagation()}
-                      className="w-full px-2 py-1 rounded-lg text-[11px] text-white font-mono outline-none"
-                      style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)" }}/>
+      <div className="overflow-x-auto pb-3" style={{ scrollbarWidth:"thin", scrollbarColor:"rgba(255,255,255,0.1) transparent" }}>
+        <div className="flex items-stretch gap-0 min-w-max px-1">
+          {chain.map((block, i) => {
+            const isEdited = edited(i), isBrokenBlock = isBroken(i), isSelected = selected === i
+            const borderColor = isBrokenBlock ? "rgba(239,68,68,0.6)" : isEdited ? "rgba(251,191,36,0.5)" : isSelected ? "rgba(74,222,128,0.4)" : "rgba(255,255,255,0.07)"
+            const bg = isBrokenBlock ? "rgba(239,68,68,0.06)" : isEdited ? "rgba(251,191,36,0.04)" : "rgba(255,255,255,0.025)"
+            return (
+              <div key={block.index} className="flex items-center">
+                <div className="w-[185px] rounded-2xl p-4 cursor-pointer transition-all duration-300"
+                  style={{ background:bg, border:`1.5px solid ${borderColor}`, boxShadow: isBrokenBlock ? "0 0 24px rgba(239,68,68,0.15)" : isEdited ? "0 0 20px rgba(251,191,36,0.1)" : "none" }}
+                  onClick={() => setSelected(selected===i ? null : i)}>
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-1">
+                    <span className="text-[9px] font-black text-gray-600 uppercase">#{block.index}</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {i === 0 && <span className="text-[7px] font-black text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded-full">GENESIS</span>}
+                      {i === chain.length-1 && i>0 && <span className="text-[7px] font-black text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded-full">LATEST</span>}
+                      {isEdited && <span className="text-[7px] font-black text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded-full">CHANGED</span>}
+                      {isBrokenBlock && <span className="text-[7px] font-black text-red-400 bg-red-500/10 px-1 py-0.5 rounded-full">BROKEN</span>}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[9px] text-gray-700 mb-0.5">Fingerprint (hash)</p>
-                    <p className="font-mono text-[9px] truncate" style={{ color: edited(i) ? "#f87171" : "#6b7280" }}>
-                      {block.hash.slice(0,24)}…
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-gray-700 mb-0.5">Previous block's hash</p>
-                    <p className="font-mono text-[9px] truncate text-gray-700">
-                      {block.previousHash.slice(0,24)}…
-                    </p>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[8px] text-gray-700 mb-1">Data — edit to tamper</p>
+                      <input value={edits[i] !== undefined ? edits[i] : block.data}
+                        onChange={e => { setEdits(p=>({...p,[i]:e.target.value})); setValid(null); setHighlightBroken([]) }}
+                        onClick={e => e.stopPropagation()}
+                        className="w-full px-2 py-1.5 rounded-lg text-[11px] text-white font-mono outline-none"
+                        style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${isEdited?"rgba(251,191,36,0.4)":"rgba(255,255,255,0.08)"}` }}/>
+                    </div>
+                    <div>
+                      <p className="text-[8px] text-gray-700 mb-0.5">Hash</p>
+                      <p className="font-mono text-[9px] truncate" style={{ color: isEdited||isBrokenBlock ? "#f87171" : "#374151" }}>{block.hash.slice(0,26)}…</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] text-gray-700 mb-0.5">Prev Hash</p>
+                      <p className="font-mono text-[9px] truncate text-gray-700">{block.previousHash.slice(0,26)}…</p>
+                    </div>
                   </div>
                 </div>
+                {i < chain.length - 1 && (
+                  <div className="flex flex-col items-center px-0.5 shrink-0 gap-0.5">
+                    <p className="text-[7px] text-gray-800 font-mono">prev</p>
+                    <div className="flex items-center">
+                      <div className="h-px w-4" style={{ background: isBroken(i+1)||isEdited ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.12)" }}/>
+                      <div className="w-0 h-0" style={{ borderTop:"3px solid transparent", borderBottom:"3px solid transparent", borderLeft:`5px solid ${isBroken(i+1)||isEdited ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.12)"}` }}/>
+                    </div>
+                    <p className="text-[7px] text-gray-800 font-mono">hash</p>
+                  </div>
+                )}
               </div>
-
-              {/* Arrow */}
-              {i < chain.length - 1 && (
-                <div className="flex flex-col items-center px-1 shrink-0">
-                  <div className="text-[10px] text-gray-700 font-mono leading-none mb-0.5">prev</div>
-                  <div className="flex items-center">
-                    <div className="h-px w-6" style={{ background: edited(i) ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.15)" }}/>
-                    <div className="w-0 h-0" style={{
-                      borderTop:"4px solid transparent", borderBottom:"4px solid transparent",
-                      borderLeft:`6px solid ${edited(i) ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.15)"}`
-                    }}/>
-                  </div>
-                  <div className="text-[10px] text-gray-700 font-mono leading-none mt-0.5">hash</div>
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
-
-      {/* Edit hint */}
-      {Object.keys(edits).length === 0 && (
-        <p className="text-center text-[12px] text-gray-600 italic">
-          👆 Click on any block above, then edit its Data field to see what happens
-        </p>
-      )}
-
-      {/* Check button */}
-      <button onClick={check} disabled={checking}
-        className="w-full py-3.5 rounded-2xl text-[14px] font-black text-white transition-all disabled:opacity-60"
+      {!anyEdited && <p className="text-center text-[12px] text-gray-600 italic">Click on any block and edit its Data field</p>}
+      <button onClick={check} disabled={checking || chain.length < 2}
+        className="w-full py-3.5 rounded-2xl text-[14px] font-black text-white disabled:opacity-50"
         style={{ background:"linear-gradient(135deg,#059669,#047857)", boxShadow:"0 0 24px rgba(5,150,105,0.3)" }}>
-        {checking ? "Checking…" : "🔍 Check Chain Validity"}
+        {checking ? "Checking…" : "Check Chain Validity"}
       </button>
-
       {valid !== null && (
-        <div className="rounded-2xl p-5 cv-pop" style={{
-          background: valid ? "rgba(74,222,128,0.06)" : "rgba(239,68,68,0.06)",
-          border:`1px solid ${valid ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.3)"}`,
-        }}>
+        <div className="rounded-2xl p-5 cv-pop" style={{ background: valid ? "rgba(74,222,128,0.06)" : "rgba(239,68,68,0.06)", border:`1.5px solid ${valid ? "rgba(74,222,128,0.35)" : "rgba(239,68,68,0.35)"}`, boxShadow: valid ? "0 0 32px rgba(74,222,128,0.08)" : "0 0 32px rgba(239,68,68,0.08)" }}>
           <div className="flex items-start gap-3">
             <span className="text-3xl">{valid ? "✅" : "💥"}</span>
             <div>
-              <p className="text-[15px] font-black mb-1" style={{ color: valid ? "#4ade80" : "#f87171" }}>
-                {valid ? "Chain is valid! Every block checks out." : "Chain is broken!"}
+              <p className="text-[15px] font-black mb-1.5" style={{ color: valid ? "#4ade80" : "#f87171" }}>
+                {valid ? "Chain is valid — all blocks check out!" : `Chain broken! ${highlightBroken.length} block${highlightBroken.length>1?"s":""} affected.`}
               </p>
-              <p className="text-[13px] text-gray-400 leading-relaxed">
-                {valid
-                  ? "Every block's fingerprint matches and the links are intact."
-                  : "You changed data in a block — its fingerprint changed, which broke the link to the next block. This is exactly why blockchain records can't be altered secretly."}
+              <p className="text-[12px] text-gray-400 leading-relaxed">
+                {valid ? "Every block's fingerprint matches. The chain is unbroken." : "You changed data in a block — its hash changed, breaking the link to every block after it. This cascading failure is exactly why blockchain is tamper-proof."}
               </p>
+              {!valid && highlightBroken.length > 0 && (
+                <p className="text-[11px] text-red-400 mt-2 font-mono">Broken at block{highlightBroken.length>1?"s":""}: #{highlightBroken.join(", #")}</p>
+              )}
             </div>
           </div>
         </div>
@@ -651,7 +743,7 @@ function ChainChapter({ chain, onUpdate, onComplete }: {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CH 4 — WALLET
+// CH 4 — WALLET (upgraded)
 // ═══════════════════════════════════════════════════════════════════════════════
 function WalletChapter({ wallets, onUpdate, onComplete }: {
   wallets: Wallet[]; onUpdate: (w: Wallet[]) => void; onComplete: () => void
@@ -664,7 +756,8 @@ function WalletChapter({ wallets, onUpdate, onComplete }: {
   const [signing,   setSigning]   = useState(false)
   const [verifyMsg, setVerifyMsg] = useState("")
   const [verified,  setVerified]  = useState<boolean|null>(null)
-  const [showKeys,  setShowKeys]  = useState(false)
+  const [showPub,   setShowPub]   = useState(false)
+  const [showPriv,  setShowPriv]  = useState(false)
 
   const handleCreate = async () => {
     if (!name.trim()) return
@@ -679,8 +772,7 @@ function WalletChapter({ wallets, onUpdate, onComplete }: {
 
   const handleSign = async () => {
     if (!selected) return
-    setSigning(true)
-    setVerified(null)
+    setSigning(true); setVerified(null)
     const sig = await signTransaction(selected.privateKey, message)
     setSignature(sig)
     setVerifyMsg(message)
@@ -699,95 +791,138 @@ function WalletChapter({ wallets, onUpdate, onComplete }: {
       {/* Key pair explainer */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-2xl p-4" style={{ background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)" }}>
-          <p className="text-2xl mb-2">🔓</p>
-          <p className="text-[13px] font-bold text-white mb-1">Public Key = Your Address</p>
-          <p className="text-[12px] text-gray-400 leading-relaxed">Share this freely. It's like your bank account number — people use it to send you coins.</p>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">🔓</span>
+            <p className="text-[13px] font-black text-white">Public Key</p>
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed">Like your bank account number — share it freely. Others use it to send you coins and verify your signatures.</p>
+          <p className="text-[10px] font-bold text-emerald-400 mt-2">✓ Safe to share</p>
         </div>
         <div className="rounded-2xl p-4" style={{ background:"rgba(239,68,68,0.06)", border:"1px solid rgba(239,68,68,0.2)" }}>
-          <p className="text-2xl mb-2">🔒</p>
-          <p className="text-[13px] font-bold text-white mb-1">Private Key = Your Password</p>
-          <p className="text-[12px] text-gray-400 leading-relaxed">Never share this. It's used to sign transactions, proving they came from you.</p>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">🔒</span>
+            <p className="text-[13px] font-black text-white">Private Key</p>
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed">Like your PIN — never share it. Used to sign transactions, proving they came from you. Lose it = lose everything.</p>
+          <p className="text-[10px] font-bold text-red-400 mt-2">✗ Never share</p>
         </div>
       </div>
 
-      {/* Create wallet */}
+      {/* Step 1: Create wallet */}
       <div className="rounded-2xl p-5" style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.08)" }}>
-        <p className="text-[13px] font-bold text-white mb-3">Step 1 — Create your wallet</p>
-        <div className="flex gap-2">
-          <input value={name} onChange={e=>setName(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handleCreate()}
-            placeholder="Your name (e.g. Alice, Bob...)"
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background:"rgba(167,139,250,0.2)", color:"#a78bfa", border:"1px solid rgba(167,139,250,0.4)" }}>1</div>
+          <p className="text-[13px] font-bold text-white">Create your wallet</p>
+        </div>
+        <div className="flex gap-2 mb-3">
+          <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleCreate()}
+            placeholder="Your name (e.g. Alice, Bob…)"
             className="flex-1 px-4 py-2.5 rounded-xl text-[13px] text-white placeholder-gray-700 outline-none"
             style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)" }}/>
           <button onClick={handleCreate} disabled={making||!name.trim()}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold text-white transition-all disabled:opacity-60"
-            style={{ background:"linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+            className="px-5 py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-50"
+            style={{ background:"linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow:"0 0 16px rgba(124,58,237,0.3)" }}>
             {making ? "…" : "Create"}
           </button>
         </div>
-
         {wallets.length > 0 && (
-          <div className="mt-3 space-y-2">
+          <div className="space-y-2">
             {wallets.map(w => (
-              <div key={w.address} onClick={() => setSelected(w)}
-                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-white/5"
-                style={{ border:`1px solid ${selected?.address===w.address?"rgba(167,139,250,0.4)":"rgba(255,255,255,0.06)"}` }}>
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg"
-                  style={{ background:"rgba(167,139,250,0.12)", border:"1px solid rgba(167,139,250,0.2)" }}>
-                  👤
+              <div key={w.address} onClick={() => { setSelected(w); setSignature(""); setVerified(null) }}
+                className="rounded-xl p-3 cursor-pointer transition-all"
+                style={{ background: selected?.address===w.address ? "rgba(167,139,250,0.08)" : "rgba(255,255,255,0.03)", border:`1px solid ${selected?.address===w.address ? "rgba(167,139,250,0.4)" : "rgba(255,255,255,0.06)"}` }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+                    style={{ background:"rgba(167,139,250,0.12)", border:"1px solid rgba(167,139,250,0.25)" }}>
+                    {w.label.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-white">{w.label}</p>
+                    <p className="font-mono text-[9px] text-gray-600 truncate">{w.address}</p>
+                  </div>
+                  <span className="text-[13px] font-black text-amber-400 shrink-0">🪙 {w.balance}</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-[13px] font-bold text-white">{w.label}</p>
-                  <p className="font-mono text-[10px] text-gray-600">{w.address}</p>
-                </div>
-                <span className="text-[13px] font-black text-amber-400">🪙 {w.balance}</span>
+                {selected?.address===w.address && (
+                  <div className="mt-3 pt-3 space-y-2" style={{ borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-gray-700 uppercase tracking-widest">Public Key (P-256)</p>
+                        <button onClick={e=>{e.stopPropagation();setShowPub(p=>!p)}} className="text-[9px] text-gray-600 hover:text-gray-400">
+                          {showPub?"hide":"show"}
+                        </button>
+                      </div>
+                      <p className="font-mono text-[9px] text-gray-500 break-all leading-relaxed">
+                        {showPub ? w.publicKey : w.publicKey.slice(0,32)+"…"}
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[9px] text-red-800 uppercase tracking-widest">Private Key (SECRET)</p>
+                        <button onClick={e=>{e.stopPropagation();setShowPriv(p=>!p)}} className="text-[9px] text-red-800 hover:text-red-600">
+                          {showPriv?"hide":"reveal"}
+                        </button>
+                      </div>
+                      <p className="font-mono text-[9px] text-red-900 break-all">
+                        {showPriv ? w.privateKey : "••••••••••••••••••••••••••••••••••••••••••••••••"}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Sign */}
+      {/* Step 2: Sign */}
       {selected && (
         <div className="rounded-2xl p-5 cv-pop" style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-[13px] font-bold text-white mb-3">Step 2 — Sign a message as <span style={{ color:"#a78bfa" }}>{selected.label}</span></p>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background:"rgba(167,139,250,0.2)", color:"#a78bfa", border:"1px solid rgba(167,139,250,0.4)" }}>2</div>
+            <p className="text-[13px] font-bold text-white">Sign a message as <span style={{ color:"#a78bfa" }}>{selected.label}</span></p>
+          </div>
           <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={2}
             className="w-full px-4 py-2.5 rounded-xl text-[13px] text-white outline-none resize-none font-mono mb-3"
             style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)" }}/>
           <button onClick={handleSign} disabled={signing}
-            className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white transition-all disabled:opacity-60 mb-3"
+            className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-50 mb-3"
             style={{ background:"linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow:"0 0 16px rgba(124,58,237,0.3)" }}>
-            {signing ? "Signing…" : `✍️ Sign with ${selected.label}'s private key`}
+            {signing ? "Signing with private key…" : `Sign with ${selected.label}'s private key`}
           </button>
-
           {signature && (
-            <div className="rounded-xl p-3 mb-3" style={{ background:"rgba(167,139,250,0.08)", border:"1px solid rgba(167,139,250,0.2)" }}>
-              <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1">Signature generated ✓</p>
-              <p className="font-mono text-[9px] text-gray-500 break-all">{signature.slice(0,64)}…</p>
-              <p className="text-[11px] text-gray-600 mt-2">This signature is mathematically tied to both the message AND {selected.label}'s private key.</p>
+            <div className="rounded-xl p-3 mb-4" style={{ background:"rgba(167,139,250,0.06)", border:"1px solid rgba(167,139,250,0.2)" }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Signature (ECDSA)</p>
+                <span className="text-emerald-400 text-xs">✓ Generated</span>
+              </div>
+              <p className="font-mono text-[9px] text-gray-500 break-all leading-relaxed">{signature.slice(0,96)}…</p>
+              <p className="text-[11px] text-gray-600 mt-2 leading-relaxed">
+                This 96-byte signature is mathematically tied to both the <span className="text-white">message</span> AND <span className="text-purple-400">{selected.label}'s private key</span>. Change either and it breaks.
+              </p>
             </div>
           )}
 
-          {/* Verify */}
+          {/* Step 3: Verify */}
           {signature && (
             <>
-              <p className="text-[13px] font-bold text-white mb-2">Step 3 — Try to verify (or tamper!)</p>
-              <p className="text-[12px] text-gray-500 mb-2">Change the message below — verification will fail because the signature no longer matches.</p>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background:"rgba(96,165,250,0.2)", color:"#60a5fa", border:"1px solid rgba(96,165,250,0.4)" }}>3</div>
+                <p className="text-[13px] font-bold text-white">Verify — or try to tamper!</p>
+              </div>
+              <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">Change even one word below — verification will fail because the signature no longer matches.</p>
               <textarea value={verifyMsg} onChange={e=>{ setVerifyMsg(e.target.value); setVerified(null) }} rows={2}
                 className="w-full px-4 py-2.5 rounded-xl text-[13px] text-white outline-none resize-none font-mono mb-2"
-                style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)" }}/>
+                style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${verifyMsg!==message?"rgba(239,68,68,0.4)":"rgba(255,255,255,0.1)"}` }}/>
+              {verifyMsg !== message && <p className="text-[10px] text-red-400 mb-2">Message changed — verification will fail</p>}
               <button onClick={handleVerify}
-                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white transition-all mb-2"
+                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white mb-2"
                 style={{ background:"linear-gradient(135deg,#0369a1,#075985)" }}>
-                🔍 Verify Signature
+                Verify Signature
               </button>
               {verified !== null && (
-                <div className="rounded-xl p-3 cv-pop" style={{
-                  background: verified?"rgba(74,222,128,0.06)":"rgba(239,68,68,0.06)",
-                  border:`1px solid ${verified?"rgba(74,222,128,0.3)":"rgba(239,68,68,0.3)"}`
-                }}>
+                <div className="rounded-xl p-3 cv-pop" style={{ background: verified?"rgba(74,222,128,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${verified?"rgba(74,222,128,0.3)":"rgba(239,68,68,0.3)"}` }}>
                   <p className="text-[13px] font-bold" style={{ color:verified?"#4ade80":"#f87171" }}>
-                    {verified ? `✅ Valid! This message was signed by ${selected.label}.` : `❌ Invalid! The message was tampered with — signature doesn't match.`}
+                    {verified ? `Valid! Confirmed this message was signed by ${selected.label}.` : `Invalid! The message was tampered — signature doesn't match.`}
                   </p>
                 </div>
               )}
@@ -1193,6 +1328,266 @@ function TokenChapter({ wallets, tokens, transfers, onUpdateTokens, onUpdateTran
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CH 7 — CONSENSUS (fully animated)
+// ═══════════════════════════════════════════════════════════════════════════════
+function ConsensusChapter({ onComplete }: { onComplete: () => void }) {
+  const [powRunning,  setPowRunning]  = useState(false)
+  const [posRunning,  setPosRunning]  = useState(false)
+  const [powProgress, setPowProgress] = useState(0)
+  const [posProgress, setPosProgress] = useState(0)
+  const [powWinner,   setPowWinner]   = useState<string|null>(null)
+  const [posWinner,   setPosWinner]   = useState<string|null>(null)
+  const [powRounds,   setPowRounds]   = useState(0)
+  const [posRounds,   setPosRounds]   = useState(0)
+  const [powTally,    setPowTally]    = useState<Record<string,number>>({})
+  const [posTally,    setPosTally]    = useState<Record<string,number>>({})
+  const [activeNode,  setActiveNode]  = useState<string|null>(null)
+
+  const MINERS = [
+    { name:"Miner A", hashRate:45, color:"#f59e0b", icon:"⛏" },
+    { name:"Miner B", hashRate:30, color:"#f87171", icon:"⛏" },
+    { name:"Miner C", hashRate:25, color:"#a78bfa", icon:"⛏" },
+  ]
+  const VALIDATORS = [
+    { name:"Alice",  stake:40, color:"#60a5fa", icon:"💰" },
+    { name:"Bob",    stake:25, color:"#4ade80", icon:"💰" },
+    { name:"Carol",  stake:20, color:"#f472b6", icon:"💰" },
+    { name:"Dave",   stake:15, color:"#fbbf24", icon:"💰" },
+  ]
+
+  const pickByWeight = (items: {name:string,color:string}[], weights: number[]) => {
+    const rand = Math.random() * 100
+    let cum = 0
+    for (let i = 0; i < items.length; i++) {
+      cum += weights[i]
+      if (rand < cum) return items[i]
+    }
+    return items[0]
+  }
+
+  const runPoW = async () => {
+    if (powRunning) return
+    setPowRunning(true); setPowWinner(null); setPowProgress(0)
+    for (let i = 0; i <= 100; i += 3) {
+      await new Promise(r => setTimeout(r, 35))
+      setPowProgress(i)
+      if (i % 15 === 0) setActiveNode(MINERS[Math.floor(Math.random()*MINERS.length)].name)
+    }
+    const winner = pickByWeight(MINERS, MINERS.map(m=>m.hashRate))
+    setPowWinner(winner.name)
+    setPowRounds(r => r+1)
+    setPowTally(t => ({ ...t, [winner.name]: (t[winner.name]??0)+1 }))
+    setActiveNode(null)
+    onComplete()
+    setPowRunning(false)
+  }
+
+  const runPoS = async () => {
+    if (posRunning) return
+    setPosRunning(true); setPosWinner(null); setPosProgress(0)
+    for (let i = 0; i <= 100; i += 8) {
+      await new Promise(r => setTimeout(r, 18))
+      setPosProgress(i)
+    }
+    const winner = pickByWeight(VALIDATORS, VALIDATORS.map(v=>v.stake))
+    setPosWinner(winner.name)
+    setPosRounds(r => r+1)
+    setPosTally(t => ({ ...t, [winner.name]: (t[winner.name]??0)+1 }))
+    onComplete()
+    setPosRunning(false)
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Context */}
+      <div className="rounded-2xl p-4" style={{ background:"rgba(34,211,238,0.05)", border:"1px solid rgba(34,211,238,0.15)" }}>
+        <p className="text-[13px] text-cyan-200 leading-relaxed">
+          🤔 <strong>The Problem:</strong> If thousands of computers all have a copy of the blockchain, how do they agree on which new block to add? Without a central authority, they need a <strong>consensus mechanism</strong> — a set of rules everyone follows.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* PoW Panel */}
+        <div className="rounded-2xl overflow-hidden" style={{ border:"1px solid rgba(245,158,11,0.25)" }}>
+          <div className="px-5 py-3" style={{ background:"rgba(245,158,11,0.08)", borderBottom:"1px solid rgba(245,158,11,0.15)" }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[14px] font-black text-white">⛏ Proof of Work</p>
+                <p className="text-[10px] text-amber-400 uppercase tracking-widest">Bitcoin · Litecoin</p>
+              </div>
+              {powRounds > 0 && <span className="text-[10px] text-gray-600">{powRounds} round{powRounds>1?"s":""}</span>}
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-[12px] text-gray-400 leading-relaxed">
+              Miners race to solve a SHA-256 puzzle. More computing power = better chance of winning. Winner gets the block reward.
+            </p>
+
+            {/* Hash rate bars */}
+            <div className="space-y-2">
+              {MINERS.map(m => {
+                const wins = powTally[m.name] ?? 0
+                const isActive = activeNode === m.name && powRunning
+                return (
+                  <div key={m.name}>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-300 flex items-center gap-1.5">
+                        {isActive && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background:m.color }}/>}
+                        {m.name}
+                        {powWinner===m.name && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background:`${m.color}20`, color:m.color }}>WINNER</span>}
+                      </span>
+                      <span style={{ color:m.color }}>{m.hashRate}% hash · {wins} win{wins!==1?"s":""}</span>
+                    </div>
+                    <div className="h-3 rounded-full overflow-hidden relative" style={{ background:"rgba(255,255,255,0.05)" }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width:`${powRunning ? (isActive ? m.hashRate + Math.random()*10 : m.hashRate) : m.hashRate}%`, background:m.color, opacity: powWinner && powWinner!==m.name ? 0.3 : 1 }}/>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {powRunning && (
+              <div>
+                <div className="flex justify-between text-[10px] text-gray-700 mb-1">
+                  <span>Mining in progress…</span><span>{powProgress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
+                  <div className="h-full rounded-full transition-all duration-100"
+                    style={{ width:`${powProgress}%`, background:"linear-gradient(90deg,#d97706,#f59e0b)" }}/>
+                </div>
+              </div>
+            )}
+
+            {powWinner && !powRunning && (
+              <div className="rounded-xl p-3 cv-pop" style={{ background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.25)" }}>
+                <p className="text-[12px] font-black text-amber-400">⛏ {powWinner} mined the block!</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">Won by computational power — luck + hash rate</p>
+              </div>
+            )}
+
+            <button onClick={runPoW} disabled={powRunning}
+              className="w-full py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-50"
+              style={{ background:"linear-gradient(135deg,#d97706,#b45309)" }}>
+              {powRunning ? "Mining…" : powRounds===0 ? "Simulate Mining Round" : "Run Again"}
+            </button>
+          </div>
+        </div>
+
+        {/* PoS Panel */}
+        <div className="rounded-2xl overflow-hidden" style={{ border:"1px solid rgba(96,165,250,0.25)" }}>
+          <div className="px-5 py-3" style={{ background:"rgba(96,165,250,0.08)", borderBottom:"1px solid rgba(96,165,250,0.15)" }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[14px] font-black text-white">🪙 Proof of Stake</p>
+                <p className="text-[10px] text-blue-400 uppercase tracking-widest">Ethereum · Cardano</p>
+              </div>
+              {posRounds > 0 && <span className="text-[10px] text-gray-600">{posRounds} round{posRounds>1?"s":""}</span>}
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-[12px] text-gray-400 leading-relaxed">
+              Validators lock up coins as collateral. More coins staked = better chance to propose the next block. Uses 99% less energy than PoW.
+            </p>
+
+            {/* Stake bars */}
+            <div className="space-y-2">
+              {VALIDATORS.map(v => {
+                const wins = posTally[v.name] ?? 0
+                return (
+                  <div key={v.name}>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-300 flex items-center gap-1.5">
+                        {v.name}
+                        {posWinner===v.name && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background:`${v.color}20`, color:v.color }}>SELECTED</span>}
+                      </span>
+                      <span style={{ color:v.color }}>{v.stake}% stake · {wins} win{wins!==1?"s":""}</span>
+                    </div>
+                    <div className="h-3 rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.05)" }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width:`${v.stake}%`, background:v.color, opacity: posWinner && posWinner!==v.name ? 0.25 : 1 }}/>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {posRunning && (
+              <div>
+                <div className="flex justify-between text-[10px] text-gray-700 mb-1">
+                  <span>Selecting validator…</span><span>{posProgress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
+                  <div className="h-full rounded-full transition-all duration-100"
+                    style={{ width:`${posProgress}%`, background:"linear-gradient(90deg,#1d4ed8,#60a5fa)" }}/>
+                </div>
+              </div>
+            )}
+
+            {posWinner && !posRunning && (
+              <div className="rounded-xl p-3 cv-pop" style={{ background:"rgba(96,165,250,0.08)", border:"1px solid rgba(96,165,250,0.25)" }}>
+                <p className="text-[12px] font-black text-blue-400">🗳 {posWinner} selected as validator!</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">Won by stake weight — no mining needed</p>
+              </div>
+            )}
+
+            <button onClick={runPoS} disabled={posRunning}
+              className="w-full py-2.5 rounded-xl text-[12px] font-bold text-white disabled:opacity-50"
+              style={{ background:"linear-gradient(135deg,#1d4ed8,#1e40af)" }}>
+              {posRunning ? "Selecting…" : posRounds===0 ? "Simulate Validator Selection" : "Run Again"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Comparison table */}
+      <div className="rounded-2xl overflow-hidden" style={{ border:"1px solid rgba(255,255,255,0.07)" }}>
+        <div className="px-5 py-3" style={{ background:"rgba(255,255,255,0.03)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[12px] font-bold text-white">PoW vs PoS — At a Glance</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr style={{ borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+                <th className="px-4 py-2.5 text-left text-[9px] text-gray-600 uppercase tracking-widest font-semibold">Property</th>
+                <th className="px-4 py-2.5 text-left text-[9px] text-amber-600 uppercase tracking-widest font-semibold">Proof of Work</th>
+                <th className="px-4 py-2.5 text-left text-[9px] text-blue-600 uppercase tracking-widest font-semibold">Proof of Stake</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["How you win",   "Most computation",           "Most staked coins"],
+                ["Energy use",    "Very High (150 TWh/yr)",     "Very Low (~0.01 TWh/yr)"],
+                ["Hardware",      "ASICs / GPUs",               "Any computer"],
+                ["Attack cost",   "51% of hash rate",           "51% of all staked coins"],
+                ["Block time",    "~10 min (Bitcoin)",          "~12 sec (Ethereum)"],
+                ["Examples",      "Bitcoin, Litecoin",          "Ethereum, Cardano, Solana"],
+              ].map(([prop,pow,pos],i) => (
+                <tr key={prop} style={{ borderBottom:i<5?"1px solid rgba(255,255,255,0.04)":"none" }}>
+                  <td className="px-4 py-2.5 text-gray-500 font-semibold">{prop}</td>
+                  <td className="px-4 py-2.5 text-amber-300/80">{pow}</td>
+                  <td className="px-4 py-2.5 text-blue-300/80">{pos}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Multi-round insight */}
+      {(powRounds > 2 || posRounds > 2) && (
+        <div className="rounded-2xl p-4 cv-pop" style={{ background:"rgba(34,211,238,0.05)", border:"1px solid rgba(34,211,238,0.15)" }}>
+          <p className="text-[12px] font-bold text-cyan-400 mb-1">💡 Notice something?</p>
+          <p className="text-[12px] text-gray-400 leading-relaxed">
+            After many rounds, the miner/validator with the most hashrate/stake wins most often — but not always. The randomness prevents any single player from winning every block. This is intentional — it keeps the network decentralized.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // COMPLETION SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
 function CompletionScreen({ onRestart }: { onRestart: () => void }) {
@@ -1209,17 +1604,18 @@ function CompletionScreen({ onRestart }: { onRestart: () => void }) {
 
         <h1 className="text-[32px] font-black text-white mb-3 tracking-tight">You understand blockchain!</h1>
         <p className="text-[15px] text-gray-400 leading-relaxed mb-8">
-          You've built a real blockchain, mined blocks with SHA-256, created wallets with ECDSA signatures, sent transactions, and deployed your own token. That's more than most people ever learn.
+          You've built a real blockchain, mined blocks with SHA-256, created wallets with real ECDSA signatures, sent transactions through a mempool, deployed your own token, and learned how PoW vs PoS consensus works. That's more than most developers ever learn.
         </p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {[
-            { icon:"🔢", label:"Hashing" },
-            { icon:"⛏", label:"Mining" },
-            { icon:"🔗", label:"Chaining" },
-            { icon:"🔑", label:"Wallets" },
-            { icon:"💸", label:"Transactions" },
-            { icon:"🪙", label:"Tokens" },
+            { icon:"🔢", label:"Hashing"      },
+            { icon:"⛏",  label:"Mining"       },
+            { icon:"🔗", label:"Chain"         },
+            { icon:"🔑", label:"Wallets"       },
+            { icon:"💸", label:"Transactions"  },
+            { icon:"🪙", label:"Tokens"        },
+            { icon:"🌐", label:"Consensus"     },
           ].map(({ icon, label }) => (
             <div key={label} className="rounded-2xl py-3 flex flex-col items-center gap-1"
               style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)" }}>

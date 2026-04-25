@@ -57,6 +57,7 @@ function RatingChart({ data, dates, color, glow }: {
     return () => obs.disconnect()
   }, [])
 
+  // Early return AFTER all hooks
   if (data.length < 2) return null
 
   // Layout constants
@@ -272,6 +273,9 @@ export default function ProfilePage() {
   const [achFilter,   setAchFilter]   = useState<"all"|"earned"|"locked">("all")
   const [achRarity,   setAchRarity]   = useState<"all"|"common"|"rare"|"epic"|"legendary">("all")
   const [showEdit,    setShowEdit]    = useState(false)
+  const [mfaEnabled,  setMfaEnabled]  = useState(false)
+  const [mfaLoading,  setMfaLoading]  = useState(false)
+  const [mfaMsg,      setMfaMsg]      = useState<string|null>(null)
 
   useEffect(() => {
     const sync = () => {
@@ -300,6 +304,11 @@ export default function ProfilePage() {
       setJoined(new Date(profile.created_at).toLocaleDateString("en-US", { month:"long", year:"numeric" }))
   }, [profile?.created_at])
 
+  useEffect(() => {
+    if (profile?.mfa_enabled !== undefined)
+      setMfaEnabled(profile.mfa_enabled ?? false)
+  }, [profile?.mfa_enabled])
+
   // ── Not logged in ──────────────────────────────────────────────────────────
   if (!user || !profile) return (
     <div className="min-h-screen flex items-center justify-center p-8"
@@ -326,9 +335,6 @@ export default function ProfilePage() {
 
   // ── Derived stats ──────────────────────────────────────────────────────────
   const tier      = getTier(profile.rating)
-  const [mfaEnabled, setMfaEnabled]   = useState(profile.mfa_enabled ?? false)
-  const [mfaLoading, setMfaLoading]   = useState(false)
-  const [mfaMsg,     setMfaMsg]       = useState<string|null>(null)
 
   const toggleMFA = async () => {
     setMfaLoading(true)

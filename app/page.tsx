@@ -298,9 +298,36 @@ const MODULES = [
     preview: ["KHOOR ZRUOG", "↓ Decrypt", "??? ????"],
   },
   {
-    id: "06", title: "Dashboard",
-    sub: "Benchmarks · Radar · Timeline",
-    desc: "Compare 9 algorithms across speed, security, memory, and simplicity with animated radar charts and timelines.",
+    id: "06", title: "Cipher Battle",
+    sub: "Real-time 1v1 · Room Code · Winner Takes All",
+    desc: "Challenge anyone to a live cipher race. Both get the same puzzle — first to decrypt wins the match.",
+    href: "/battle", color: "#f472b6",
+    icon: "⚔", tags: ["Real-time", "1v1"],
+    stat: "Live", statLabel: "Multiplayer",
+    preview: ["ROOM: AB3X", "↓ RACE", "YOU WIN!"],
+  },
+  {
+    id: "07", title: "Blockchain Lab",
+    sub: "SHA-256 · ECDSA · Mining · Tokens",
+    desc: "7-chapter guided tour. Mine real blocks, generate key pairs, send transactions, and deploy your own token.",
+    href: "/blockchain", color: "#4ade80",
+    icon: "⛓", tags: ["Web Crypto", "7 Chapters"],
+    stat: "Real", statLabel: "Cryptography",
+    preview: ["HASH: 00af…", "↓ Mine", "BLOCK #3"],
+  },
+  {
+    id: "08", title: "Speed Round",
+    sub: "60 Seconds · Unlimited Ciphers · Personal Best",
+    desc: "Race against the clock. Solve as many ciphers as you can in 60 seconds. Your high score is tracked forever.",
+    href: "/speed", color: "#fb923c",
+    icon: "⚡", tags: ["60s Timer", "Streak"],
+    stat: "60s", statLabel: "Time Limit",
+    preview: ["CIPHER 1", "→ CORRECT!", "CIPHER 2"],
+  },
+  {
+    id: "09", title: "Dashboard",
+    sub: "Benchmarks · Radar · Analytics",
+    desc: "Compare 9 algorithms across speed, security, memory, and simplicity with animated radar charts.",
     href: "/dashboard", color: "#ec4899",
     icon: "↑", tags: ["Analytics", "9 Algos"],
     stat: "Live", statLabel: "Benchmarks",
@@ -569,6 +596,47 @@ export default function HomePage() {
       <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden"
         style={{ fontFamily: "'Courier New', Courier, monospace" }}>
 
+        {/* ╔══ NAVBAR ══════════════════════════════════════════════════════╗ */}
+        <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 sm:px-10 py-4"
+          style={{
+            background: scrollY > 40 ? "rgba(5,5,5,0.92)" : "transparent",
+            backdropFilter: scrollY > 40 ? "blur(20px)" : "none",
+            borderBottom: scrollY > 40 ? "1px solid rgba(255,255,255,0.06)" : "none",
+            transition: "all 0.4s ease",
+          }}>
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black"
+              style={{ background:"linear-gradient(135deg,#2563eb,#4f46e5)", boxShadow:"0 0 12px rgba(37,99,235,0.4)" }}>
+              🔐
+            </div>
+            <span className="font-black text-[13px] tracking-tight text-white font-mono">CryptoVerse</span>
+          </Link>
+          <div className="hidden md:flex items-center gap-6">
+            {[
+              { label:"Contest",    href:"/contest"    },
+              { label:"Battle",     href:"/battle"     },
+              { label:"Blockchain", href:"/blockchain" },
+              { label:"Pricing",    href:"/pricing"    },
+            ].map(({ label, href }) => (
+              <Link key={label} href={href}
+                className="text-[12px] text-gray-500 hover:text-white transition-colors font-mono tracking-wide">
+                {label}
+              </Link>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard"
+              className="text-[12px] text-gray-500 hover:text-white px-4 py-2 rounded-lg transition-colors font-mono">
+              Sign In
+            </Link>
+            <Link href="/contest"
+              className="text-[12px] font-black text-white px-4 py-2 rounded-lg transition-all"
+              style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 16px rgba(37,99,235,0.3)" }}>
+              Play Free
+            </Link>
+          </div>
+        </nav>
+
         {/* ╔══ HERO ═══════════════════════════════════════════════════════╗ */}
         <section className="relative min-h-screen flex flex-col justify-center overflow-hidden">
 
@@ -680,34 +748,31 @@ export default function HomePage() {
                 transform: booted ? "translateY(0)" : "translateY(12px)",
                 transition: "all 0.9s cubic-bezier(0.23,1,0.32,1) 0.75s",
               }}>
-              <Link href="/classical"
-                className="relative group inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold text-white overflow-hidden"
+              <Link href="/contest"
+                className="relative group inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-[13px] font-black text-white overflow-hidden"
                 style={{
                   background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                  boxShadow: "0 0 30px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.4)",
+                  boxShadow: "0 0 40px rgba(59,130,246,0.4), 0 4px 16px rgba(0,0,0,0.4)",
                 }}>
-                <span className="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.06] transition-opacity duration-200 rounded-xl" />
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <path d="M1.5 1.5l8 4-8 4V1.5z" fill="currentColor"/>
-                </svg>
-                Start Exploring
-              </Link>
-              <Link href="/contest"
-                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold transition-all duration-200 hover:bg-red-500/10"
-                style={{ border: "1px solid rgba(239,68,68,0.35)", color: "#f87171" }}>
+                <span className="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.07] transition-opacity duration-200 rounded-xl" />
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
                 </span>
-                Daily Contest
+                Play Today's Contest
               </Link>
-              <Link href="/dashboard"
-                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-bold text-gray-500 hover:text-gray-300 transition-colors duration-200"
-                style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
-                Dashboard
+              <Link href="/classical"
+                className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-[13px] font-bold transition-all duration-200 hover:bg-white/5"
+                style={{ border: "1px solid rgba(255,255,255,0.12)", color: "#d1d5db" }}>
+                Explore Ciphers
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                   <path d="M1.5 5.5h8M6.5 2.5l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+              </Link>
+              <Link href="/blockchain"
+                className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-[13px] font-bold transition-all duration-200 hover:bg-emerald-500/5"
+                style={{ border: "1px solid rgba(74,222,128,0.2)", color: "#4ade80" }}>
+                ⛓ Blockchain Lab
               </Link>
             </div>
 
@@ -766,7 +831,7 @@ export default function HomePage() {
               <span className="font-mono text-[10px] text-blue-500 tracking-[0.3em] uppercase font-bold">// MODULES</span>
               <div className="flex-1 h-px"
                 style={{ background: "linear-gradient(90deg, rgba(59,130,246,0.25), transparent)" }} />
-              <span className="font-mono text-[9px] text-gray-700">06 available</span>
+              <span className="font-mono text-[9px] text-gray-700">09 available</span>
             </div>
             <h2 className="leading-tight mb-3"
               style={{ fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 900 }}>
@@ -791,10 +856,10 @@ export default function HomePage() {
         <section className="py-16 px-6 sm:px-10" style={{ borderTop:"1px solid rgba(255,255,255,0.05)", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
           <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
             {[
-              { value:"200+", label:"Daily Puzzles",      color:"#60a5fa" },
-              { value:"27",   label:"Achievements",        color:"#fbbf24" },
-              { value:"6",    label:"Cipher Types",        color:"#4ade80" },
-              { value:"FREE", label:"To Get Started",      color:"#f472b6" },
+              { value:"700+", label:"Cipher Puzzles",    color:"#60a5fa" },
+              { value:"27",   label:"Achievements",      color:"#fbbf24" },
+              { value:"9",    label:"Modules",           color:"#4ade80" },
+              { value:"FREE", label:"To Get Started",    color:"#f472b6" },
             ].map(({ value, label, color }) => (
               <div key={label} className="group cursor-default">
                 <p className="text-[42px] font-black leading-none mb-2 transition-transform group-hover:scale-110"
@@ -859,6 +924,36 @@ export default function HomePage() {
                 </div>
                 <p className="text-[15px] font-black text-white mb-2">{title}</p>
                 <p className="text-[12px] text-gray-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ╔══ SOCIAL PROOF ════════════════════════════════════════════════╗ */}
+        <section className="px-6 sm:px-10 py-16 max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <span className="font-mono text-[10px] text-gray-600 tracking-[0.3em] uppercase">// What learners say</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { quote:"The blockchain chapter is genuinely the best explanation of SHA-256 mining I've seen. Better than any YouTube video.", name:"Rohan M.", role:"CS Student, NIT", color:"#60a5fa" },
+              { quote:"I studied cryptography for 2 semesters but the AES visualizer here made it click in 10 minutes. The state matrix is genius.", name:"Priya S.", role:"Software Engineer", color:"#4ade80" },
+              { quote:"Cipher Battle with my friends is addictive. It's the only platform that made me actually want to learn this stuff.", name:"Aditya K.", role:"Final Year B.Tech", color:"#a78bfa" },
+            ].map(({ quote, name, role, color }) => (
+              <div key={name} className="rounded-2xl p-6 relative"
+                style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.07)" }}>
+                <div className="text-3xl mb-4 opacity-40" style={{ color }}>"</div>
+                <p className="text-[13px] text-gray-400 leading-relaxed mb-5 italic">{quote}</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black"
+                    style={{ background:`${color}20`, color, border:`1px solid ${color}30` }}>
+                    {name[0]}
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-bold text-white">{name}</p>
+                    <p className="text-[10px] text-gray-600">{role}</p>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
